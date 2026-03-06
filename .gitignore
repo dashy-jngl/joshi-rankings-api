@@ -1,0 +1,36 @@
+# Database
+*.db
+*.db-shm
+*.db-wal
+*.db.bak
+*conflicted copy*
+
+# Binaries
+joshi-rankings-api
+joshi-server
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+
+# Test coverage
+coverage.out
+
+# Logs
+*.log
+
+# Security reviews (keep private)
+SECURITY-REVIEW*.md
+
+# Dev notes
+todo.md
+curls.md

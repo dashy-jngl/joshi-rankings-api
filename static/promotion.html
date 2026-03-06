@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Promotion | Joshitori</title>
+    <meta name="description" content="View promotion details, roster, titles, and statistics for this women's pro wrestling promotion.">
+    <link rel="canonical" href="https://joshitori.com/promotion">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Promotion | Joshitori">
+    <meta property="og:description" content="View promotion details, roster, titles, and statistics for this women's pro wrestling promotion.">
+    <meta property="og:url" content="https://joshitori.com/promotion">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Promotion | Joshitori">
+    <meta name="twitter:description" content="View promotion details, roster, titles, and statistics for this women's pro wrestling promotion.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <style>
+        .promo-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+        .promo-header h1 { font-size: 2rem; font-weight: 800; }
+        .promo-location { color: var(--text-secondary); font-size: 0.95rem; }
+        .section-title { font-size: 1.2rem; font-weight: 700; margin: 24px 0 12px; }
+        .title-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .title-chip {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+            padding: 8px 14px; cursor: pointer; transition: all 0.15s; font-size: 0.85rem;
+        }
+        .title-chip:hover { border-color: var(--accent); background: var(--bg-hover); }
+    </style>
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+<div class="container">
+        <div id="content">
+            <div class="loading">Loading promotion...</div>
+        </div>
+    </div>
+
+    <script>
+        const promoId = window.location.pathname.split('/').pop();
+
+        async function loadPromotion() {
+            try {
+                const data = await fetch(`/api/promotions/${promoId}`).then(r => r.json());
+                if (data.error) { document.getElementById('content').innerHTML = `<div class="empty">${data.error}</div>`; return; }
+
+                const p = data.promotion;
+                document.title = `${p.name} — Joshitori`;
+
+                const yearsActive = data.year_by_year?.length || 0;
+
+                let html = `
+                    <div class="promo-header">
+                        <h1>${p.name}</h1>
+                        ${p.abbreviation ? `<span class="promo-badge">${p.abbreviation}</span>` : ''}
+                        <span class="status-badge ${p.status === 'Active' ? 'status-active' : 'status-inactive'}">${p.status || 'Unknown'}</span>
+                    </div>
+                    ${p.location ? `<div class="promo-location">📍 ${p.location}</div>` : ''}
+
+                    <div class="stats-grid" style="margin-top:16px">
+                        <div class="stat-card"><div class="value">${data.total_wrestlers}</div><div class="label">Total Wrestlers</div></div>
+                        <div class="stat-card"><div class="value">${data.avg_elo > 0 ? Math.round(data.avg_elo) : '—'}</div><div class="label">Avg ELO (Roster)</div></div>
+                        <div class="stat-card"><div class="value">${(data.titles||[]).length}</div><div class="label">Titles</div></div>
+                        <div class="stat-card"><div class="value">${yearsActive}</div><div class="label">Years Active</div></div>
+                    </div>
+                `;
+
+                // Titles
+                if (data.titles && data.titles.length > 0) {
+                    html += `<h3 class="section-title">Championships</h3><div class="title-list">`;
+                    data.titles.forEach(t => {
+                        html += `<div class="title-chip" onclick="window.location='/title/${t.cagematch_id}'">${t.name} <span class="status-badge ${t.status === 'Active' ? 'status-active' : 'status-inactive'}" style="margin-left:6px">${t.status}</span></div>`;
+                    });
+                    html += `</div>`;
+                }
+
+                // Year-by-year chart
+                if (data.year_by_year && data.year_by_year.length > 0) {
+                    html += `<h3 class="section-title">Activity Over Time</h3><div class="card"><div class="chart-container"><canvas id="yearChart"></canvas></div></div>`;
+                }
+
+                // Current roster
+                const roster = data.current_roster || [];
+                if (roster.length > 0) {
+                    html += `<h3 class="section-title">Current Roster (${roster.length} wrestlers)</h3>`;
+                    html += `<div class="table-wrapper"><table>
+                        <thead><tr><th>#</th><th>Wrestler</th><th>ELO</th><th>Record</th></tr></thead><tbody>`;
+                    roster.forEach((w, i) => {
+                        html += `<tr onclick="window.location='/wrestler/${w.id}'">
+                            <td>${i+1}</td>
+                            <td><strong>${w.name}</strong></td>
+                            <td><span class="elo">${Math.round(w.elo)}</span></td>
+                            <td><span class="record"><span class="w">${w.wins}W</span> · <span class="l">${w.losses}L</span> · <span class="d">${w.draws}D</span></span></td>
+                        </tr>`;
+                    });
+                    html += `</tbody></table></div>`;
+                }
+
+                document.getElementById('content').innerHTML = html;
+
+                // Render chart
+                if (data.year_by_year && data.year_by_year.length > 0) {
+                    const ctx = document.getElementById('yearChart');
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: data.year_by_year.map(y => y.year),
+                            datasets: [{
+                                label: 'Wrestlers',
+                                data: data.year_by_year.map(y => y.wrestlers),
+                                backgroundColor: 'rgba(233,30,99,0.6)',
+                                borderColor: '#e91e63',
+                                borderWidth: 1,
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#888' } },
+                                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#888' }, beginAtZero: true }
+                            },
+                            plugins: { legend: { display: false } }
+                        }
+                    });
+                }
+            } catch(e) {
+                document.getElementById('content').innerHTML = '<div class="empty">Failed to load promotion</div>';
+            }
+        }
+
+        loadPromotion();
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

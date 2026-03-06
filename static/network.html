@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wrestler Network | Joshitori</title>
+    <meta name="description" content="Explore the rivalry network and connections between joshi wrestlers. Visualize who has faced whom across promotions.">
+    <link rel="canonical" href="https://joshitori.com/network">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Wrestler Network | Joshitori">
+    <meta property="og:description" content="Explore the rivalry network and connections between joshi wrestlers. Visualize who has faced whom across promotions.">
+    <meta property="og:url" content="https://joshitori.com/network">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Wrestler Network | Joshitori">
+    <meta name="twitter:description" content="Explore the rivalry network and connections between joshi wrestlers. Visualize who has faced whom across promotions.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <style>
+        .network-container {
+            position: relative;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        #networkSvg {
+            width: 100%;
+            height: 600px;
+            display: block;
+        }
+        .network-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .network-controls select,
+        .network-controls input {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.85rem;
+        }
+        .network-controls input { flex: 1; min-width: 200px; }
+        .node-label {
+            font-size: 10px;
+            fill: #8888a0;
+            pointer-events: none;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+        }
+        .node-label.highlighted {
+            fill: #e8e8f0;
+            font-size: 12px;
+        }
+        .link {
+            stroke-opacity: 0.3;
+        }
+        .link.highlighted {
+            stroke-opacity: 0.8;
+        }
+        .node {
+            cursor: pointer;
+            stroke: var(--bg-primary);
+            stroke-width: 1.5px;
+        }
+        .node:hover {
+            stroke: var(--accent);
+            stroke-width: 3px;
+        }
+        .tooltip {
+            position: absolute;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 0.85rem;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 10;
+            max-width: 300px;
+        }
+        .tooltip.visible { opacity: 1; }
+        .tooltip h3 {
+            font-size: 0.95rem;
+            margin-bottom: 4px;
+            color: var(--accent);
+        }
+        .tooltip .detail {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            line-height: 1.5;
+        }
+        .legend {
+            display: flex;
+            gap: 16px;
+            padding: 12px 16px;
+            flex-wrap: wrap;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .mode-tabs {
+            display: flex;
+            gap: 4px;
+        }
+        .mode-tabs .btn.active {
+            background: var(--accent);
+            color: white;
+        }
+        .info-panel {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            padding: 16px;
+            display: none;
+        }
+        .info-panel.visible { display: block; }
+        .info-panel h3 { margin-bottom: 8px; color: var(--accent); }
+        .info-connections {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .info-connection {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        .info-connection:hover { border-color: var(--accent); }
+        .info-connection .count { color: var(--accent); font-weight: 700; }
+
+        /* Autocomplete dropdown */
+        .ac-item {
+            padding: 8px 14px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border);
+        }
+        .ac-item:hover, .ac-item.active {
+            background: var(--bg-card);
+            color: var(--accent);
+        }
+        .ac-item .ac-promo {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-left: 8px;
+        }
+
+        /* Multi-select highlight */
+        .node.selected {
+            stroke: #ffd700;
+            stroke-width: 4px;
+        }
+
+        /* Head-to-head panel */
+        .h2h-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 16px;
+            display: none;
+        }
+        .h2h-panel.visible { display: block; }
+        .h2h-panel h2 {
+            font-size: 1.1rem;
+            margin-bottom: 12px;
+            color: var(--accent);
+        }
+        .h2h-wrestlers {
+            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+        }
+        .h2h-wrestler-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 0.85rem;
+        }
+        .h2h-wrestler-card .name { font-weight: 700; color: var(--text-primary); }
+        .h2h-wrestler-card .elo { color: var(--accent); font-weight: 600; }
+        .h2h-pairs {
+            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+        }
+        .h2h-pair-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 0.8rem;
+            min-width: 220px;
+        }
+        .h2h-pair-card .vs { text-align: center; font-weight: 700; color: var(--text-secondary); margin: 4px 0; }
+        .h2h-pair-card .stat { display: flex; justify-content: space-between; }
+        .h2h-pair-card .wins { color: #4caf50; font-weight: 600; }
+        .h2h-pair-card .draws-count { color: var(--text-muted); }
+        .h2h-matches {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .h2h-match-row {
+            display: flex; gap: 12px; align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+        }
+        .h2h-match-row .date { color: var(--text-muted); min-width: 90px; }
+        .h2h-match-row .event { flex: 1; }
+        .h2h-match-row .result { min-width: 120px; text-align: right; }
+        .h2h-match-row .winner { color: #4caf50; font-weight: 600; }
+        .h2h-match-row .loser { color: var(--text-muted); }
+        .h2h-match-row .draw { color: #ff9800; }
+        .h2h-clear-btn {
+            float: right; font-size: 0.75rem; cursor: pointer;
+            background: var(--bg-card); border: 1px solid var(--border);
+            color: var(--text-secondary); padding: 4px 10px; border-radius: 4px;
+        }
+        .h2h-clear-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* Dual range slider */
+        .dual-range input[type="range"] { z-index: 2; }
+        .dual-range input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 14px; height: 14px; border-radius: 50%;
+            background: var(--accent); border: 2px solid #fff;
+            cursor: pointer; pointer-events: all;
+            position: relative; z-index: 3;
+        }
+        .dual-range input[type="range"]::-moz-range-thumb {
+            width: 14px; height: 14px; border-radius: 50%;
+            background: var(--accent); border: 2px solid #fff;
+            cursor: pointer; pointer-events: all;
+        }
+        #rangeTrack { z-index: 1; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+<div class="container">
+        <div class="page-header">
+            <h1>🌐 Wrestler Network</h1>
+            <p>Interactive relationship graph — see who fought who, discover rivalries and tag partners</p>
+        </div>
+
+        <div class="network-controls">
+            <div class="mode-tabs">
+                <button class="btn btn-ghost active" onclick="setMode('top', this)">Top Network</button>
+                <button class="btn btn-ghost" onclick="setMode('wrestler', this)">Wrestler Focus</button>
+            </div>
+            <div style="position:relative; flex:1; min-width:200px;">
+                <input type="text" id="searchInput" placeholder="Search wrestler..." autocomplete="off">
+                <div id="autocompleteDropdown" style="position:absolute; top:100%; left:0; right:0; background:var(--bg-secondary); border:1px solid var(--border); border-top:none; border-radius:0 0 6px 6px; max-height:200px; overflow-y:auto; display:none; z-index:100;"></div>
+            </div>
+            <div class="range-slider-wrap" style="display:flex; flex-direction:column; gap:2px; min-width:220px;">
+                <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-secondary);">
+                    <span>Era Range</span>
+                    <span id="rangeLabel">1970 – 2026</span>
+                </div>
+                <div class="dual-range" style="position:relative; height:20px;">
+                    <input type="range" id="rangeFrom" min="1970" max="2026" value="1970" step="1"
+                        style="position:absolute; width:100%; pointer-events:none; appearance:none; -webkit-appearance:none; background:transparent; height:20px;">
+                    <input type="range" id="rangeTo" min="1970" max="2026" value="2026" step="1"
+                        style="position:absolute; width:100%; pointer-events:none; appearance:none; -webkit-appearance:none; background:transparent; height:20px;">
+                    <div id="rangeTrack" style="position:absolute; top:8px; height:4px; background:var(--accent); border-radius:2px;"></div>
+                </div>
+            </div>
+            <select id="sortBy">
+                <option value="matches">Most Active</option>
+                <option value="elo">Highest ELO</option>
+            </select>
+            <select id="promoFilter">
+                <option value="">All Promotions</option>
+            </select>
+            <select id="nodeLimit">
+                <option value="30">30 wrestlers</option>
+                <option value="50" selected>50 wrestlers</option>
+                <option value="80">80 wrestlers</option>
+                <option value="120">120 wrestlers</option>
+                <option value="200">200 wrestlers</option>
+                <option value="500">500 wrestlers</option>
+                <option value="1000">1000 wrestlers</option>
+                <option value="2000">2000 wrestlers</option>
+                <option value="4000">4000 wrestlers</option>
+            </select>
+            <label style="display:flex; align-items:center; gap:4px; font-size:0.8rem; color:var(--text-secondary)">
+                Min matches: <input type="number" id="minMatches" value="50" min="1" max="500" style="width:60px; background:var(--card-bg); color:var(--text-primary); border:1px solid #333; border-radius:4px; padding:2px 6px;">
+            </label>
+        </div>
+
+        <div class="network-container">
+            <svg id="networkSvg"></svg>
+            <div class="tooltip" id="tooltip"></div>
+            <div class="info-panel" id="infoPanel"></div>
+            <div class="legend" id="legend"></div>
+        </div>
+
+        <div class="h2h-panel" id="h2hPanel">
+            <button class="h2h-clear-btn" onclick="clearSelection()">✕ Clear Selection</button>
+            <h2>⚔️ Head-to-Head Comparison</h2>
+            <div id="h2hContent"></div>
+        </div>
+    </div>
+
+    <script>
+    const svg = d3.select('#networkSvg');
+    const tooltip = document.getElementById('tooltip');
+    const infoPanel = document.getElementById('infoPanel');
+    let simulation = null;
+    let currentMode = 'top';
+    let currentData = null;
+    let allWrestlers = null;
+    let selectedWrestlers = new Map(); // id -> {name, elo}
+    let currentZoom = null; // store zoom behavior for programmatic use
+    let currentFocusId = null; // track focused wrestler for filter reloads
+
+    // Color by promotion cluster
+    const PROMO_COLORS = {
+        'World Wonder Ring Stardom': '#e91e63',
+        'Dream Star Fighting Marigold': '#ff9800',
+        'Tokyo Joshi Pro-Wrestling': '#2196f3',
+        'World Wrestling Entertainment': '#ffd700',
+        'All Elite Wrestling': '#4caf50',
+        'Ice Ribbon': '#00bcd4',
+        'Sendai Girls\' Pro Wrestling': '#9c27b0',
+        'PURE-J': '#ff5722',
+        'Actwres girl\'Z': '#8bc34a',
+        'Consejo Mundial De Lucha Libre': '#795548',
+        'Freelancer': '#607d8b'
+    };
+
+    function getColor(promotion) {
+        return PROMO_COLORS[promotion] || '#607d8b';
+    }
+
+    function setMode(mode, btn) {
+        currentMode = mode;
+        document.querySelectorAll('.mode-tabs .btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        if (mode === 'top') {
+            loadTopNetwork();
+        }
+    }
+
+    // Search with autocomplete — works in both modes
+    const searchInput = document.getElementById('searchInput');
+    const acDropdown = document.getElementById('autocompleteDropdown');
+    let searchDebounce = null;
+    let acIndex = -1;
+
+    searchInput.addEventListener('input', () => {
+        clearTimeout(searchDebounce);
+        const q = searchInput.value.trim();
+        if (q.length < 2) { acDropdown.style.display = 'none'; return; }
+
+        searchDebounce = setTimeout(async () => {
+            if (!allWrestlers) {
+                const res = await fetch('/api/wrestlers');
+                allWrestlers = await res.json();
+            }
+            const ql = q.toLowerCase();
+            const matches = allWrestlers
+                .filter(w => w.name.toLowerCase().includes(ql))
+                .sort((a, b) => {
+                    const an = a.name.toLowerCase(), bn = b.name.toLowerCase();
+                    const aExact = an === ql, bExact = bn === ql;
+                    if (aExact !== bExact) return aExact ? -1 : 1;
+                    const aStarts = an.startsWith(ql), bStarts = bn.startsWith(ql);
+                    if (aStarts !== bStarts) return aStarts ? -1 : 1;
+                    return an.localeCompare(bn);
+                })
+                .slice(0, 10);
+            if (matches.length === 0) { acDropdown.style.display = 'none'; return; }
+
+            acDropdown.innerHTML = matches.map((w, i) => `
+                <div class="ac-item" data-id="${w.ID || w.id}" data-name="${w.name}" data-idx="${i}">
+                    ${w.name}<span class="ac-promo">${w.promotion || ''}</span>
+                </div>
+            `).join('');
+            acDropdown.style.display = 'block';
+            acIndex = -1;
+
+            acDropdown.querySelectorAll('.ac-item').forEach(el => {
+                el.addEventListener('click', () => selectFromAutocomplete(el));
+            });
+        }, 200);
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+        const items = acDropdown.querySelectorAll('.ac-item');
+        if (!items.length) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); acIndex = Math.min(acIndex + 1, items.length - 1); updateACHighlight(items); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); acIndex = Math.max(acIndex - 1, 0); updateACHighlight(items); }
+        else if (e.key === 'Enter' && acIndex >= 0) { e.preventDefault(); selectFromAutocomplete(items[acIndex]); }
+        else if (e.key === 'Escape') { acDropdown.style.display = 'none'; }
+    });
+
+    function updateACHighlight(items) {
+        items.forEach((el, i) => el.classList.toggle('active', i === acIndex));
+    }
+
+    function selectFromAutocomplete(el) {
+        const id = parseInt(el.dataset.id);
+        const name = el.dataset.name;
+        acDropdown.style.display = 'none';
+        searchInput.value = '';
+
+        if (currentMode === 'wrestler') {
+            // Load full wrestler network
+            loadWrestlerNetwork(id);
+        } else {
+            // In top network mode: highlight & zoom to the wrestler
+            highlightAndZoomTo(id);
+        }
+    }
+
+    // Close autocomplete when clicking elsewhere
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#searchInput') && !e.target.closest('#autocompleteDropdown')) {
+            acDropdown.style.display = 'none';
+        }
+    });
+
+    // Highlight a wrestler node and zoom to it in top network mode
+    function highlightAndZoomTo(wrestlerId) {
+        if (!currentData) return;
+        const node = currentData.nodes.find(n => n.id === wrestlerId);
+        if (!node) {
+            // Wrestler not in current graph — show a brief message
+            searchInput.value = '';
+            searchInput.placeholder = 'Not in current graph — try Wrestler Focus mode';
+            setTimeout(() => { searchInput.placeholder = 'Search wrestler...'; }, 3000);
+            return;
+        }
+
+        // Find the D3 simulation node (has x, y)
+        const simNode = simulation.nodes().find(n => n.id === wrestlerId);
+        if (!simNode || simNode.x == null) return;
+
+        const svgEl = svg.node();
+        const width = svgEl.getBoundingClientRect().width;
+        const height = 600;
+
+        // Zoom to the node
+        const scale = 2;
+        const transform = d3.zoomIdentity
+            .translate(width / 2 - simNode.x * scale, height / 2 - simNode.y * scale)
+            .scale(scale);
+        svg.transition().duration(750).call(currentZoom.transform, transform);
+
+        // Highlight the node and its connections
+        svg.selectAll('.node').attr('opacity', d => {
+            if (d.id === wrestlerId) return 1;
+            // Check if connected
+            const connected = currentData.edges.some(e =>
+                (e.source === wrestlerId || e.source.id === wrestlerId) && (e.target === d.id || e.target.id === d.id) ||
+                (e.target === wrestlerId || e.target.id === wrestlerId) && (e.source === d.id || e.source.id === d.id)
+            );
+            return connected ? 0.9 : 0.15;
+        });
+        svg.selectAll('.link').attr('opacity', l => {
+            const sid = l.source.id || l.source;
+            const tid = l.target.id || l.target;
+            return (sid === wrestlerId || tid === wrestlerId) ? 0.8 : 0.05;
+        });
+        svg.selectAll('.node-label').attr('opacity', d => {
+            if (d.id === wrestlerId) return 1;
+            const connected = currentData.edges.some(e =>
+                (e.source === wrestlerId || e.source.id === wrestlerId) && (e.target === d.id || e.target.id === d.id) ||
+                (e.target === wrestlerId || e.target.id === wrestlerId) && (e.source === d.id || e.source.id === d.id)
+            );
+            return connected ? 0.9 : 0.1;
+        });
+
+        // Reset after 5 seconds
+        setTimeout(() => {
+            svg.selectAll('.node').attr('opacity', 1);
+            svg.selectAll('.link').attr('opacity', 1);
+            svg.selectAll('.node-label').attr('opacity', 1);
+        }, 5000);
+    }
+
+    // Range slider logic
+    const rangeFrom = document.getElementById('rangeFrom');
+    const rangeTo = document.getElementById('rangeTo');
+    const rangeLabel = document.getElementById('rangeLabel');
+    const rangeTrack = document.getElementById('rangeTrack');
+
+    function updateRangeUI() {
+        let from = parseInt(rangeFrom.value);
+        let to = parseInt(rangeTo.value);
+        if (from > to) { // swap if crossed
+            rangeFrom.value = to;
+            rangeTo.value = from;
+            [from, to] = [to, from];
+        }
+        const min = 1970, max = 2026;
+        const leftPct = ((from - min) / (max - min)) * 100;
+        const rightPct = ((to - min) / (max - min)) * 100;
+        rangeTrack.style.left = leftPct + '%';
+        rangeTrack.style.width = (rightPct - leftPct) + '%';
+        if (from === min && to === max) {
+            rangeLabel.textContent = 'All Time';
+        } else {
+            rangeLabel.textContent = `${from} – ${to}`;
+        }
+    }
+    updateRangeUI();
+
+    let rangeDebounce;
+    function reloadCurrentNetwork() {
+        if (currentMode === 'top') loadTopNetwork();
+        else if (currentMode === 'wrestler' && currentFocusId) loadWrestlerNetwork(currentFocusId);
+    }
+
+    function onRangeChange() {
+        updateRangeUI();
+        clearTimeout(rangeDebounce);
+        rangeDebounce = setTimeout(reloadCurrentNetwork, 3000);
+    }
+    rangeFrom.addEventListener('input', onRangeChange);
+    rangeTo.addEventListener('input', onRangeChange);
+
+    document.getElementById('nodeLimit').addEventListener('change', reloadCurrentNetwork);
+    document.getElementById('sortBy').addEventListener('change', reloadCurrentNetwork);
+    document.getElementById('promoFilter').addEventListener('change', reloadCurrentNetwork);
+    document.getElementById('minMatches').addEventListener('change', reloadCurrentNetwork);
+
+    // Populate promotion filter from wrestlers list
+    async function loadPromoFilter() {
+        if (!allWrestlers) {
+            const res = await fetch('/api/wrestlers');
+            allWrestlers = await res.json();
+        }
+        const promos = [...new Set(allWrestlers.map(w => w.promotion).filter(Boolean))].sort();
+        const select = document.getElementById('promoFilter');
+        promos.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p;
+            opt.textContent = p;
+            select.appendChild(opt);
+        });
+    }
+    loadPromoFilter();
+
+    async function loadTopNetwork() {
+        const fromYear = parseInt(document.getElementById('rangeFrom').value);
+        const toYear = parseInt(document.getElementById('rangeTo').value);
+        const limit = document.getElementById('nodeLimit').value;
+        const sortBy = document.getElementById('sortBy').value;
+        const promo = document.getElementById('promoFilter').value;
+        const minMatches = document.getElementById('minMatches').value || 50;
+        let url = `/api/network/top?limit=${limit}&min_matches=${minMatches}&sort=${sortBy}`;
+        if (fromYear > 1970 || toYear < 2026) {
+            url += `&from=${Math.min(fromYear, toYear)}&to=${Math.max(fromYear, toYear)}`;
+        }
+        if (promo) {
+            url += `&promotion=${encodeURIComponent(promo)}`;
+        }
+
+        const res = await fetch(url);
+        const data = await res.json();
+        currentData = data;
+        renderNetwork(data);
+    }
+
+    async function loadWrestlerNetwork(id) {
+        currentFocusId = id;
+        const limit = document.getElementById('nodeLimit').value || 50;
+        const fromYear = parseInt(document.getElementById('rangeFrom').value);
+        const toYear = parseInt(document.getElementById('rangeTo').value);
+        const promo = document.getElementById('promoFilter').value;
+        const minMatches = document.getElementById('minMatches').value || 1;
+        let url = `/api/network/wrestler/${id}?limit=${limit}&depth=5&min_matches=${minMatches}`;
+        if (fromYear > 1970 || toYear < 2026) {
+            url += `&from=${Math.min(fromYear, toYear)}&to=${Math.max(fromYear, toYear)}`;
+        }
+        if (promo) url += `&promotion=${encodeURIComponent(promo)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        currentData = data;
+        renderNetwork(data, id);
+    }
+
+    function renderNetwork(data, centerId) {
+        svg.selectAll('*').remove();
+        infoPanel.classList.remove('visible');
+
+        if (!data.nodes || data.nodes.length === 0) return;
+
+        const width = svg.node().getBoundingClientRect().width;
+        const height = 600;
+
+        // Build node/link maps
+        const nodeMap = {};
+        data.nodes.forEach(n => { nodeMap[n.id] = n; });
+
+        const links = data.edges.filter(e => nodeMap[e.source] && nodeMap[e.target]).map(e => ({
+            source: e.source,
+            target: e.target,
+            match_count: e.match_count,
+            source_wins: e.source_wins,
+            target_wins: e.target_wins,
+            draws: e.draws
+        }));
+
+        // Count connections (degree) per node
+        const degreeMap = {};
+        links.forEach(l => {
+            degreeMap[l.source] = (degreeMap[l.source] || 0) + 1;
+            degreeMap[l.target] = (degreeMap[l.target] || 0) + 1;
+        });
+        const maxDegree = Math.max(...Object.values(degreeMap), 1);
+
+        const nodes = data.nodes.map(n => {
+            const degree = degreeMap[n.id] || 1;
+            let radius;
+            if (centerId) {
+                radius = n.id === centerId ? 26 : Math.max(4, 3 + 16 * (degree / maxDegree));
+            } else {
+                radius = Math.max(3, 2.5 + 22 * Math.pow(degree / maxDegree, 0.7));
+            }
+            return { ...n, radius, degree };
+        });
+
+        // Max match count for link scaling
+        const maxMatches = Math.max(...links.map(l => l.match_count), 1);
+
+        if (simulation) simulation.stop();
+
+        // Build promotion cluster centers for grouping force
+        const promoNodes = {};
+        nodes.forEach(n => {
+            if (!promoNodes[n.promotion]) promoNodes[n.promotion] = [];
+            promoNodes[n.promotion].push(n);
+        });
+        const promoList = Object.keys(promoNodes).sort((a, b) => promoNodes[b].length - promoNodes[a].length);
+        const promoCenters = {};
+        const angleStep = (2 * Math.PI) / Math.max(promoList.length, 1);
+        const clusterRadius = Math.min(width, height) * 0.3;
+        promoList.forEach((p, i) => {
+            promoCenters[p] = {
+                x: width / 2 + clusterRadius * Math.cos(i * angleStep),
+                y: height / 2 + clusterRadius * Math.sin(i * angleStep)
+            };
+        });
+
+        // Custom clustering force — gently pulls nodes toward their promotion center
+        function forceCluster(alpha) {
+            const strength = 0.15;
+            nodes.forEach(n => {
+                const center = promoCenters[n.promotion];
+                if (center) {
+                    n.vx += (center.x - n.x) * strength * alpha;
+                    n.vy += (center.y - n.y) * strength * alpha;
+                }
+            });
+        }
+
+        simulation = d3.forceSimulation(nodes)
+            .force('link', d3.forceLink(links).id(d => d.id).distance(d => 120 - (d.match_count / maxMatches) * 40))
+            .force('charge', d3.forceManyBody().strength(d => -150 - d.radius * 18))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('collision', d3.forceCollide().radius(d => d.radius + 14).strength(1.0).iterations(4))
+            .force('cluster', forceCluster);
+
+        if (centerId) {
+            // === RADIAL TREE LAYOUT for wrestler focus mode ===
+            renderTreeFocus(centerId, data, nodes, links, nodeMap, maxMatches, width, height);
+            return;
+        }
+
+        const g = svg.append('g');
+
+        // Zoom
+        currentZoom = d3.zoom().scaleExtent([0.3, 4]).on('zoom', e => g.attr('transform', e.transform));
+        svg.call(currentZoom);
+
+        // Promotion cluster labels
+        {
+            const clusterLabels = g.append('g')
+                .selectAll('text')
+                .data(promoList.filter(p => promoNodes[p].length >= 3))
+                .join('text')
+                .attr('class', 'cluster-label')
+                .attr('text-anchor', 'middle')
+                .attr('fill', d => getColor(d))
+                .attr('font-size', '11px')
+                .attr('font-weight', '600')
+                .attr('opacity', 0.5)
+                .text(d => d.replace('World Wonder Ring ', '').replace('Pro-Wrestling', 'PW').replace('Pro Wrestling', 'PW').replace("Women's ", ''));
+
+            simulation.on('tick.labels', () => {
+                clusterLabels.each(function(promo) {
+                    const pNodes = promoNodes[promo];
+                    const cx = d3.mean(pNodes, n => n.x);
+                    const cy = d3.mean(pNodes, n => n.y);
+                    d3.select(this).attr('x', cx).attr('y', cy - 20);
+                });
+            });
+        }
+
+        // Links
+        const link = g.append('g')
+            .selectAll('line')
+            .data(links)
+            .join('line')
+            .attr('class', 'link')
+            .attr('stroke', '#555')
+            .attr('stroke-width', d => Math.max(0.5, (d.match_count / maxMatches) * 6));
+
+        // Nodes
+        const node = g.append('g')
+            .selectAll('circle')
+            .data(nodes)
+            .join('circle')
+            .attr('class', 'node')
+            .attr('r', d => d.radius)
+            .attr('fill', d => getColor(d.promotion))
+            .call(d3.drag()
+                .on('start', dragStart)
+                .on('drag', dragging)
+                .on('end', dragEnd))
+            .on('mouseover', (event, d) => showTooltip(event, d, links, centerId))
+            .on('mouseout', hideTooltip)
+            .on('click', (event, d) => {
+                if (event.shiftKey) {
+                    toggleSelection(d, node);
+                } else {
+                    showInfo(d, links, nodeMap);
+                }
+            });
+
+        // Labels
+        const label = g.append('g')
+            .selectAll('text')
+            .data(nodes.filter(n => n.radius >= 8))
+            .join('text')
+            .attr('class', 'node-label')
+            .text(d => d.name.length > 18 ? d.name.slice(0, 16) + '…' : d.name)
+            .attr('dy', d => -d.radius - 4)
+            .attr('text-anchor', 'middle');
+
+        simulation.on('tick', () => {
+            link
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+            node
+                .attr('cx', d => d.x)
+                .attr('cy', d => d.y);
+            label
+                .attr('x', d => d.x)
+                .attr('y', d => d.y);
+        });
+
+        // Render legend
+        renderLegend(nodes);
+    }
+
+    function renderTreeFocus(centerId, data, nodes, links, nodeMap, maxMatches, width, height) {
+        if (simulation) simulation.stop();
+        simulation = null;
+
+        // Build tree hierarchy: center -> direct connections -> 2nd hop
+        // Use == for comparisons to handle int/string type mismatches from JSON
+        const cid = centerId;
+        const idOf = (v) => typeof v === 'object' && v !== null ? v.id : v;
+        const isCenter = (v) => idOf(v) == cid;
+
+        const directLinks = links
+            .filter(l => (isCenter(l.source) || isCenter(l.target)))
+            .map(l => ({
+                id: idOf(isCenter(l.source) ? l.target : l.source),
+                matchCount: l.match_count
+            }))
+            .sort((a, b) => b.matchCount - a.matchCount);
+
+        console.log('[tree] centerId:', cid, 'links:', links.length, 'directLinks:', directLinks.length);
+
+        const directIDSet = new Set(directLinks.map(d => d.id));
+        const isDirect = (v) => directIDSet.has(v);
+
+        // For each direct connection, find their 2nd-hop children
+        const childrenOf = {};
+        links.forEach(l => {
+            const sid = idOf(l.source), tid = idOf(l.target);
+            if (isCenter(sid) || isCenter(tid)) return;
+            if (isDirect(sid) && !isDirect(tid) && !isCenter(tid)) {
+                if (!childrenOf[sid]) childrenOf[sid] = [];
+                childrenOf[sid].push({ id: tid, matchCount: l.match_count });
+            }
+            if (isDirect(tid) && !isDirect(sid) && !isCenter(sid)) {
+                if (!childrenOf[tid]) childrenOf[tid] = [];
+                childrenOf[tid].push({ id: sid, matchCount: l.match_count });
+            }
+        });
+
+        // Dedupe 2nd-hop nodes (assign to the parent with strongest connection)
+        const assigned = new Set();
+        assigned.add(cid);
+        directIDSet.forEach(id => assigned.add(id));
+
+        // Sort children by match count too
+        for (const pid of Object.keys(childrenOf)) {
+            childrenOf[pid].sort((a, b) => b.matchCount - a.matchCount);
+        }
+
+        // Build hierarchy object
+        const centerNode = nodeMap[centerId];
+        const hierRoot = {
+            id: centerId,
+            name: centerNode?.name || '?',
+            data: centerNode,
+            children: directLinks.map(dl => {
+                const n = nodeMap[dl.id];
+                const kids = (childrenOf[dl.id] || [])
+                    .filter(c => !assigned.has(c.id))
+                    .map(c => {
+                        assigned.add(c.id);
+                        const cn = nodeMap[c.id];
+                        return {
+                            id: c.id,
+                            name: cn?.name || '?',
+                            data: cn,
+                            matchCount: c.matchCount,
+                            children: []
+                        };
+                    });
+                return {
+                    id: dl.id,
+                    name: n?.name || '?',
+                    data: n,
+                    matchCount: dl.matchCount,
+                    children: kids
+                };
+            })
+        };
+
+        console.log('[tree] hierRoot children:', hierRoot.children.length, 
+            'sample links source/target values:', links.slice(0,5).map(l => [l.source, l.target]),
+            'centerId:', cid,
+            'nodeMap keys sample:', Object.keys(nodeMap).slice(0,5));
+        
+        // Sort children strongest first — they get placed first in the spiral
+        hierRoot.children.sort((a, b) => b.matchCount - a.matchCount);
+
+        const root = d3.hierarchy(hierRoot);
+        const treeRadius = Math.min(width, height) * 0.95;
+        const maxDirectMC = Math.max(...directLinks.map(d => d.matchCount), 1);
+
+        // Golden angle spiral placement — no d3.tree needed
+        const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5°
+
+        // Place depth-1 nodes in golden angle spiral, sorted by strength
+        // Use index-based radius so position in spiral = distance from center
+        const depth1 = root.children || [];
+        const d1Count = depth1.length || 1;
+        depth1.forEach((d, i) => {
+            d.x = goldenAngle * i; // angle
+            // Index-based: first node (strongest) = closest, last = furthest
+            // Smooth sqrt curve so inner nodes get more breathing room
+            const t = i / (d1Count - 1 || 1); // 0 to 1
+            d.y = treeRadius * 0.08 + treeRadius * 0.62 * Math.sqrt(t);
+        });
+
+        // Place depth-2 nodes fanning out from their parent
+        // Ensure they're always in the outer zone regardless of parent proximity
+        const minHop2Radius = treeRadius * 0.55; // 2nd-hop never closer than this
+        depth1.forEach(parent => {
+            const kids = parent.children || [];
+            const count = kids.length;
+            if (count === 0) return;
+            const fanSpread = Math.min(0.5, 0.15 + count * 0.03);
+            kids.sort((a, b) => (b.data.matchCount || 0) - (a.data.matchCount || 0));
+            kids.forEach((d, i) => {
+                const t = count === 1 ? 0 : (i / (count - 1)) * 2 - 1;
+                d.x = parent.x + t * fanSpread;
+                const baseY = Math.max(parent.y + treeRadius * 0.15, minHop2Radius);
+                const spread = treeRadius * 0.12 * (i / Math.max(count - 1, 1));
+                d.y = baseY + spread;
+            });
+        });
+
+        // Root at center
+        root.x = 0;
+        root.y = 0;
+
+        const gZoom = svg.append('g');
+        const g = gZoom.append('g')
+            .attr('transform', `translate(${width / 2},${height / 2})`);
+
+        // Zoom on outer group so inner centering isn't clobbered
+        currentZoom = d3.zoom().scaleExtent([0.3, 5]).on('zoom', e => {
+            gZoom.attr('transform', e.transform);
+        });
+        svg.call(currentZoom);
+
+        // Convert polar to cartesian for each node
+        root.descendants().forEach(d => {
+            d.cx = d.y * Math.cos(d.x - Math.PI / 2);
+            d.cy = d.y * Math.sin(d.x - Math.PI / 2);
+        });
+
+        // Links
+        const treeLinks = g.append('g')
+            .selectAll('path')
+            .data(root.links())
+            .join('path')
+            .attr('class', 'tree-link')
+            .attr('fill', 'none')
+            .attr('stroke', d => d.target.depth === 1 ? '#aaa' : '#777')
+            .attr('stroke-opacity', d => d.target.depth === 1 ? 0.7 : 0.45)
+            .attr('stroke-width', d => {
+                const mc = d.target.data.matchCount || 1;
+                if (d.target.depth === 1) return Math.max(1.5, (mc / maxMatches) * 7);
+                return 1;
+            })
+            .style('pointer-events', 'none')
+            .attr('d', d => {
+                const sx = d.source.cx || 0, sy = d.source.cy || 0;
+                const tx = d.target.cx || 0, ty = d.target.cy || 0;
+                if (isNaN(sx) || isNaN(tx)) return '';
+                // Straight lines for clarity
+                return `M${sx},${sy} L${tx},${ty}`;
+            });
+
+        // Nodes — positioned with flat cartesian coords
+        const nodeG = g.append('g')
+            .selectAll('g')
+            .data(root.descendants())
+            .join('g')
+            .attr('transform', d => `translate(${d.cx},${d.cy})`);
+
+        // Build full branch: ancestors to root + all descendants
+        function getBranch(node) {
+            const branch = new Set();
+            // Walk up to root
+            let current = node;
+            while (current) { branch.add(current); current = current.parent; }
+            // Walk down all descendants
+            function addDescendants(n) {
+                branch.add(n);
+                if (n.children) n.children.forEach(addDescendants);
+            }
+            addDescendants(node);
+            return branch;
+        }
+
+        nodeG.append('circle')
+            .attr('class', 'node')
+            .attr('r', d => {
+                if (d.depth === 0) return 20;
+                if (d.depth === 1) return Math.max(5, 5 + 12 * ((d.data.matchCount || 1) / maxMatches));
+                return 4;
+            })
+            .attr('fill', d => d.data.data ? getColor(d.data.data.promotion) : '#607d8b')
+            .on('mouseover', (event, d) => {
+                if (!d.data.data) return;
+                showTooltip(event, d.data.data, links, centerId);
+                
+                // Highlight full branch: path to root + all descendants
+                const branch = getBranch(d);
+                treeLinks
+                    .attr('stroke', l => (branch.has(l.source) && branch.has(l.target)) ? 'var(--accent, #e91e63)' : (l.target.depth === 1 ? '#888' : '#555'))
+                    .attr('stroke-opacity', l => (branch.has(l.source) && branch.has(l.target)) ? 1 : 0.1)
+                    .attr('stroke-width', l => (branch.has(l.source) && branch.has(l.target)) ? 3 : 0.5);
+                
+                // Dim non-branch nodes
+                nodeG.select('circle').attr('opacity', n => branch.has(n) ? 1 : 0.15);
+                nodeG.select('text').attr('opacity', n => branch.has(n) ? 1 : 0.1);
+            })
+            .on('mouseout', () => {
+                hideTooltip();
+                // Reset links
+                treeLinks
+                    .attr('stroke', d => d.target.depth === 1 ? '#888' : '#555')
+                    .attr('stroke-opacity', d => d.target.depth === 1 ? 0.6 : 0.35)
+                    .attr('stroke-width', d => {
+                        const mc = d.target.data.matchCount || 1;
+                        if (d.target.depth === 1) return Math.max(1, (mc / maxMatches) * 6);
+                        return 1.5;
+                    });
+                nodeG.select('circle').attr('opacity', 1);
+                nodeG.select('text').attr('opacity', 1);
+            })
+            .on('click', (event, d) => {
+                if (!d.data.data) return;
+                if (d.depth === 0) {
+                    showInfo(d.data.data, links, nodeMap);
+                } else {
+                    loadWrestlerNetwork(d.data.id);
+                }
+            });
+
+        // Labels — always horizontal, offset to the side with more space
+        nodeG.append('text')
+            .attr('class', d => `node-label ${d.depth === 0 ? 'highlighted' : ''}`)
+            .attr('dy', '0.35em')
+            .attr('x', d => {
+                // Push label away from center
+                const r = d.depth === 0 ? 0 : (d.cx >= 0 ? 8 : -8);
+                return r;
+            })
+            .attr('text-anchor', d => d.depth === 0 ? 'middle' : (d.cx >= 0 ? 'start' : 'end'))
+            .text(d => {
+                const name = d.data.name;
+                if (d.depth === 0) return name;
+                const mc = d.data.matchCount ? ` (${d.data.matchCount})` : '';
+                const maxLen = d.depth === 1 ? 22 : 16;
+                return (name.length > maxLen ? name.slice(0, maxLen - 1) + '…' : name) + mc;
+            })
+            .style('font-size', d => d.depth === 0 ? '13px' : d.depth === 1 ? '10px' : '8px');
+
+        // Render legend
+        renderLegend(nodes);
+    }
+
+    function showTooltip(event, d, links, centerId) {
+        const connections = links.filter(l =>
+            (l.source.id || l.source) === d.id || (l.target.id || l.target) === d.id
+        );
+        // Find shared matches with the focused wrestler specifically
+        let sharedWithCenter = 0;
+        if (centerId && d.id !== centerId) {
+            const centerLink = links.find(l =>
+                ((l.source.id || l.source) === d.id && (l.target.id || l.target) === centerId) ||
+                ((l.source.id || l.source) === centerId && (l.target.id || l.target) === d.id)
+            );
+            if (centerLink) sharedWithCenter = centerLink.match_count;
+        }
+
+        tooltip.innerHTML = `
+            <h3>${d.name}</h3>
+            <div class="detail">
+                ELO: <strong>${Math.round(d.elo)}</strong><br>
+                Total Matches: ${d.matches.toLocaleString()}<br>
+                Connections: ${connections.length}<br>
+                ${centerId && d.id !== centerId ? `Shared Matches: ${sharedWithCenter.toLocaleString()}<br>` : ''}
+                ${d.promotion}
+            </div>
+        `;
+        tooltip.classList.add('visible');
+
+        const rect = svg.node().getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+        const inBottomRight = mouseX > rect.width * 0.65 && mouseY > rect.height * 0.55;
+        if (inBottomRight) {
+            tooltip.style.right = 'auto';
+            tooltip.style.left = '12px';
+        } else {
+            tooltip.style.left = 'auto';
+            tooltip.style.right = '12px';
+        }
+        tooltip.style.bottom = '12px';
+        tooltip.style.top = 'auto';
+
+        // Highlight for force layout only (tree layout handles its own highlighting)
+        if (svg.selectAll('.tree-link').size() === 0) {
+            const branchNodes = new Set();
+            const queue = [d.id];
+            branchNodes.add(d.id);
+            while (queue.length > 0) {
+                const current = queue.shift();
+                links.forEach(l => {
+                    const src = l.source.id || l.source;
+                    const tgt = l.target.id || l.target;
+                    if (src === current && !branchNodes.has(tgt)) {
+                        branchNodes.add(tgt);
+                        queue.push(tgt);
+                    } else if (tgt === current && !branchNodes.has(src)) {
+                        branchNodes.add(src);
+                        queue.push(src);
+                    }
+                });
+            }
+            svg.selectAll('.link').classed('highlighted', l => {
+                const src = l.source.id || l.source;
+                const tgt = l.target.id || l.target;
+                return branchNodes.has(src) && branchNodes.has(tgt);
+            });
+            svg.selectAll('.node').style('opacity', n => branchNodes.has(n.id) ? 1 : 0.15);
+        }
+    }
+
+    function hideTooltip() {
+        tooltip.classList.remove('visible');
+        if (svg.selectAll('.tree-link').size() === 0) {
+            svg.selectAll('.link').classed('highlighted', false);
+            svg.selectAll('.node').style('opacity', 1);
+        }
+    }
+
+    function showInfo(d, links, nodeMap) {
+        const connections = links
+            .filter(l => (l.source.id || l.source) === d.id || (l.target.id || l.target) === d.id)
+            .map(l => {
+                const otherId = (l.source.id || l.source) === d.id ? (l.target.id || l.target) : (l.source.id || l.source);
+                const other = nodeMap[otherId] || { name: '?' };
+                return { ...l, otherId, otherName: other.name };
+            })
+            .sort((a, b) => b.match_count - a.match_count);
+
+        infoPanel.innerHTML = `
+            <h3>${d.name} — ${connections.length} connections</h3>
+            <div style="margin-bottom:8px; color:var(--text-secondary); font-size:0.8rem">
+                ELO: ${Math.round(d.elo)} · ${d.matches.toLocaleString()} matches · ${d.promotion}
+                · <a href="/wrestler/${d.id}" style="color:var(--accent);">View Profile →</a>
+            </div>
+            <div class="info-connections">
+                ${connections.slice(0, 20).map(c => `
+                    <div class="info-connection" onclick="selectNodeById(${c.otherId})">
+                        ${c.otherName} <span class="count">${c.match_count}</span>
+                    </div>
+                `).join('')}
+            </div>
+            <div style="margin-top:8px">
+                <button class="btn btn-ghost" style="font-size:0.8rem" onclick="loadWrestlerNetwork(${d.id})">Focus Network</button>
+            </div>
+        `;
+        infoPanel.classList.add('visible');
+    }
+
+    function renderLegend(nodes) {
+        const promos = {};
+        nodes.forEach(n => { promos[n.promotion] = (promos[n.promotion] || 0) + 1; });
+        const sorted = Object.entries(promos).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+        document.getElementById('legend').innerHTML = sorted.map(([name, count]) => `
+            <div class="legend-item">
+                <div class="legend-dot" style="background:${getColor(name)}"></div>
+                ${name} (${count})
+            </div>
+        `).join('');
+    }
+
+    function dragStart(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+    }
+    function dragging(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+    }
+    function dragEnd(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+    }
+
+    // Multi-wrestler selection (shift+click)
+    function toggleSelection(d, nodeSelection) {
+        if (selectedWrestlers.has(d.id)) {
+            selectedWrestlers.delete(d.id);
+        } else {
+            selectedWrestlers.set(d.id, { name: d.name, elo: Math.round(d.elo) });
+        }
+        // Update visual selection
+        nodeSelection.classed('selected', n => selectedWrestlers.has(n.id));
+
+        if (selectedWrestlers.size >= 2) {
+            loadHeadToHead();
+        } else {
+            document.getElementById('h2hPanel').classList.remove('visible');
+        }
+    }
+
+    function clearSelection() {
+        selectedWrestlers.clear();
+        svg.selectAll('.node').classed('selected', false);
+        document.getElementById('h2hPanel').classList.remove('visible');
+    }
+
+    async function loadHeadToHead() {
+        const ids = [...selectedWrestlers.keys()].join(',');
+        const res = await fetch(`/api/network/head-to-head?ids=${ids}`);
+        const data = await res.json();
+        renderH2HPanel(data);
+    }
+
+    function renderH2HPanel(data) {
+        const panel = document.getElementById('h2hPanel');
+        const content = document.getElementById('h2hContent');
+
+        // Wrestler cards
+        let html = '<div class="h2h-wrestlers">';
+        for (const [id, w] of selectedWrestlers) {
+            html += `<div class="h2h-wrestler-card"><span class="name">${w.name}</span> · <span class="elo">ELO ${w.elo}</span></div>`;
+        }
+        html += '</div>';
+
+        // Pairwise stats
+        if (data.pairs && data.pairs.length > 0) {
+            html += '<div class="h2h-pairs">';
+            for (const p of data.pairs) {
+                html += `
+                    <div class="h2h-pair-card">
+                        <div><strong>${p.wrestler1_name}</strong></div>
+                        <div class="vs">vs</div>
+                        <div><strong>${p.wrestler2_name}</strong></div>
+                        <div style="margin-top:8px;">
+                            <div class="stat"><span>Total Shared Matches</span><strong>${p.total_matches}</strong></div>
+                            <div class="stat"><span>🤼 As Opponents</span><strong>${p.as_opponents}</strong></div>
+                            <div class="stat"><span>🤝 As Partners</span><strong>${p.as_partners}</strong></div>
+                        </div>
+                        ${p.as_opponents > 0 ? `
+                        <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border);">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Opponent Breakdown</div>
+                            <div class="stat"><span>Singles</span><strong>${p.singles}</strong></div>
+                            <div class="stat"><span>Tags</span><strong>${p.tags}</strong></div>
+                            <div class="stat"><span>Multi-Person</span><strong>${p.multi_person}</strong></div>
+                        </div>
+                        <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border);">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Overall (as opponents)</div>
+                            <div class="stat"><span class="wins">${p.wrestler1_name.split(' ').pop()} wins</span><strong class="wins">${p.w1_wins}</strong></div>
+                            <div class="stat"><span class="wins">${p.wrestler2_name.split(' ').pop()} wins</span><strong class="wins">${p.w2_wins}</strong></div>
+                            <div class="stat"><span class="draws-count">Draws</span><span class="draws-count">${p.draws}</span></div>
+                        </div>
+                        ${p.singles > 0 ? `
+                        <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border);">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Singles Only</div>
+                            <div class="stat"><span class="wins">${p.wrestler1_name.split(' ').pop()} wins</span><strong class="wins">${p.w1_wins_singles}</strong></div>
+                            <div class="stat"><span class="wins">${p.wrestler2_name.split(' ').pop()} wins</span><strong class="wins">${p.w2_wins_singles}</strong></div>
+                            <div class="stat"><span class="draws-count">Draws</span><span class="draws-count">${p.draws_singles}</span></div>
+                        </div>` : ''}
+                        ` : ''}
+                    </div>
+                `;
+            }
+            html += '</div>';
+        }
+
+        // Shared matches with filters
+        if (data.matches && data.matches.length > 0) {
+            html += `
+                <h3 style="margin-bottom:8px;">Shared Match History (${data.matches.length})</h3>
+                <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+                    <select id="h2hFilterSize" onchange="filterH2HMatches()" style="background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-primary); padding:4px 8px; border-radius:4px; font-size:0.8rem;">
+                        <option value="">All Match Types</option>
+                        <option value="singles">Singles</option>
+                        <option value="tag">Tag</option>
+                        <option value="multi">Multi-Person</option>
+                    </select>
+                    <select id="h2hFilterRel" onchange="filterH2HMatches()" style="background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-primary); padding:4px 8px; border-radius:4px; font-size:0.8rem;">
+                        <option value="">Opponents & Partners</option>
+                        <option value="opponents">Opponents Only</option>
+                        <option value="partners">Partners Only</option>
+                    </select>
+                    <select id="h2hFilterTitle" onchange="filterH2HMatches()" style="background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-primary); padding:4px 8px; border-radius:4px; font-size:0.8rem;">
+                        <option value="">All Matches</option>
+                        <option value="title">Title Matches Only</option>
+                    </select>
+                    <span id="h2hFilterCount" style="color:var(--text-muted); font-size:0.8rem; align-self:center;"></span>
+                </div>
+                <div class="h2h-matches" id="h2hMatchList"></div>
+            `;
+
+            // Store matches globally for filtering
+            window._h2hMatches = data.matches;
+        }
+
+        content.innerHTML = html;
+        if (window._h2hMatches) filterH2HMatches();
+        panel.classList.add('visible');
+    }
+
+    function filterH2HMatches() {
+        const sizeFilter = document.getElementById('h2hFilterSize')?.value || '';
+        const relFilter = document.getElementById('h2hFilterRel')?.value || '';
+        const titleFilter = document.getElementById('h2hFilterTitle')?.value || '';
+        const matches = window._h2hMatches || [];
+
+        const filtered = matches.filter(m => {
+            if (sizeFilter && m.match_size !== sizeFilter) return false;
+            if (relFilter && m.relationship !== relFilter) return false;
+            if (titleFilter === 'title' && !m.is_title_match) return false;
+            return true;
+        });
+
+        document.getElementById('h2hFilterCount').textContent = `Showing ${filtered.length} of ${matches.length}`;
+
+        const list = document.getElementById('h2hMatchList');
+        if (!list) return;
+
+        if (filtered.length === 0) {
+            list.innerHTML = '<div style="color:var(--text-muted); padding:12px; font-style:italic;">No matches found with these filters</div>';
+            return;
+        }
+
+        list.innerHTML = filtered.map(m => {
+            const date = m.date ? m.date.slice(0, 10) : '?';
+            const relIcon = m.relationship === 'partners' ? '🤝' : '🤼';
+            const titleBadge = m.is_title_match ? '<span style="background:#ffd700; color:#000; padding:1px 5px; border-radius:3px; font-size:0.7rem; font-weight:700; margin-left:4px;">TITLE</span>' : '';
+            const sizeBadge = m.match_size === 'singles' ? '1v1' : m.match_size === 'tag' ? 'TAG' : `${m.participant_count}P`;
+
+            // Group participants by team
+            const teams = {};
+            (m.participants || []).forEach(p => {
+                if (!teams[p.team]) teams[p.team] = [];
+                teams[p.team].push(p);
+            });
+            const teamKeys = Object.keys(teams).sort();
+
+            const teamHtml = teamKeys.map(t => {
+                return teams[t].map(p => {
+                    const bold = p.is_selected ? 'font-weight:700;' : '';
+                    const color = p.is_winner ? 'color:#4caf50;' : m.is_draw ? 'color:#ff9800;' : 'color:#f44336;';
+                    const icon = p.is_winner ? ' ✓' : m.is_draw ? ' =' : ' ✗';
+                    return `<span style="${bold}${color}">${p.wrestler_name}${icon}</span>`;
+                }).join(' & ');
+            }).join(' <span style="color:var(--text-muted);">vs</span> ');
+
+            return `
+                <div class="h2h-match-row" style="display:grid; grid-template-columns:80px 50px 30px 1fr; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--border);">
+                    <span style="color:var(--text-muted); font-size:0.8rem;">${date}</span>
+                    <span style="color:var(--text-secondary); font-size:0.7rem; text-align:center;">${sizeBadge}</span>
+                    <span style="font-size:0.8rem;">${relIcon}</span>
+                    <div>
+                        <div style="font-size:0.85rem;">${teamHtml}</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted);">${m.event_name}${m.match_type ? ' · ' + m.match_type : ''}${m.finish_type ? ' · ' + m.finish_type : ''}${m.match_time ? ' (' + m.match_time + ')' : ''}${titleBadge}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Select a node by ID — navigates the info panel to that wrestler
+    function selectNodeById(id) {
+        if (!currentData) return;
+        const nodeData = currentData.nodes.find(n => n.id === id);
+        if (!nodeData) return;
+
+        // Find the simulation node (has x, y from d3)
+        const simNode = simulation.nodes().find(n => n.id === id);
+        if (!simNode) return;
+
+        // Build nodeMap and links like renderNetwork does
+        const nodeMap = {};
+        currentData.nodes.forEach(n => { nodeMap[n.id] = n; });
+        const links = currentData.edges.filter(e => nodeMap[e.source?.id ?? e.source] && nodeMap[e.target?.id ?? e.target]).map(e => ({
+            source: e.source,
+            target: e.target,
+            match_count: e.match_count,
+            source_wins: e.source_wins,
+            target_wins: e.target_wins,
+            draws: e.draws
+        }));
+
+        // Use the sim node which has all the d3 properties
+        showInfo(simNode, links, nodeMap);
+
+        // Zoom to the node
+        const svgEl = svg.node();
+        const width = svgEl.getBoundingClientRect().width;
+        const height = 600;
+        const scale = 2;
+        const transform = d3.zoomIdentity
+            .translate(width / 2 - simNode.x * scale, height / 2 - simNode.y * scale)
+            .scale(scale);
+        svg.transition().duration(750).call(currentZoom.transform, transform);
+    }
+
+    // Init
+    loadTopNetwork();
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event | Joshitori</title>
+    <meta name="description" content="View event results, match card, and ELO changes for this joshi pro wrestling event.">
+    <link rel="canonical" href="https://joshitori.com/event">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Event | Joshitori">
+    <meta property="og:description" content="View event results, match card, and ELO changes for this joshi pro wrestling event.">
+    <meta property="og:url" content="https://joshitori.com/event">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Event | Joshitori">
+    <meta name="twitter:description" content="View event results, match card, and ELO changes for this joshi pro wrestling event.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <style>
+        .event-header { margin-bottom: 32px; }
+        .event-name { font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; }
+        .event-meta {
+            display: flex; gap: 16px; align-items: center; margin-top: 8px;
+            color: var(--text-secondary); font-size: 0.95rem; flex-wrap: wrap;
+        }
+        .event-meta a { color: var(--accent); }
+        .match-card {
+            background: var(--card-bg); border-radius: 12px; padding: 16px 20px;
+            margin-bottom: 12px; border: 1px solid var(--border);
+        }
+        .match-card.title-match { border-left: 3px solid var(--accent); }
+        .match-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 10px; font-size: 0.8rem; color: var(--text-muted);
+        }
+        .title-badge { background: rgba(233,30,99,0.15); color: var(--accent); }
+        .match-result { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .participant-row { display: flex; align-items: center; gap: 8px; }
+        .participant-row a { color: var(--text-primary); }
+        .participant-row a:hover { color: var(--accent); }
+        .participant-row .ghost { color: var(--text-muted); }
+        .elo-chip { font-size: 0.75rem; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
+        .elo-chip.positive { background: rgba(76,175,80,0.15); color: #4caf50; }
+        .elo-chip.negative { background: rgba(244,67,54,0.15); color: #f44336; }
+        .elo-before { font-size: 0.75rem; color: var(--text-muted); }
+        .vs-divider { font-weight: 700; color: var(--text-muted); font-size: 0.85rem; padding: 0 4px; }
+        .draw-badge { font-size: 0.75rem; background: rgba(255,193,7,0.15); color: #ffc107; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+        .cm-link { font-size: 0.8rem; opacity: 0.5; }
+        .cm-link:hover { opacity: 1; }
+        @media (max-width: 600px) {
+            .event-name { font-size: 1.4rem; }
+            .match-result { flex-direction: column; gap: 6px; }
+            .vs-divider { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+<div class="container">
+        <a href="/" class="back-link">← Back</a>
+        <div id="content">
+            <div class="loading">Loading event...</div>
+        </div>
+    </div>
+
+    <script>
+        function wLink(name, wrestlerId, ghostCmid) {
+            if (wrestlerId) return `<a href="/wrestler/${wrestlerId}">${name}</a>`;
+            const params = new URLSearchParams({name});
+            if (ghostCmid) params.set('cmid', ghostCmid);
+            return `<a href="/wrestler/0?${params}" class="ghost">${name}</a>`;
+        }
+
+        async function loadEvent() {
+            const eventId = window.location.pathname.split('/').pop();
+            const content = document.getElementById('content');
+
+            try {
+                const resp = await fetch(`/api/events/${eventId}`);
+                if (!resp.ok) {
+                    content.innerHTML = '<div class="error">Event not found</div>';
+                    return;
+                }
+                const data = await resp.json();
+                document.title = `${data.event_name} — Joshitori`;
+
+                let html = `
+                    <div class="event-header">
+                        <div class="event-name">${data.event_name}</div>
+                        <div class="event-meta">
+                            <span>📅 ${data.date ? data.date.substring(0, 10) : 'Unknown'}</span>
+                            ${data.promotion ? `<span>🏟️ ${data.promotion}</span>` : ''}
+                            <span>⚔️ ${data.match_count} match${data.match_count !== 1 ? 'es' : ''}</span>
+                            <a href="https://www.cagematch.net/?id=1&nr=${data.cagematch_event_id}" target="_blank" rel="noopener" class="cm-link">View on Cagematch ↗</a>
+                        </div>
+                    </div>
+                `;
+
+                data.matches.forEach((m, i) => {
+                    const titleClass = m.is_title_match ? ' title-match' : '';
+                    const winners = m.participants.filter(p => p.is_winner);
+                    const losers = m.participants.filter(p => !p.is_winner);
+
+                    const renderTeam = (team, isWinner) => team.map(p => {
+                        const link = wLink(p.name, p.wrestler_id, p.ghost_cagematch_id);
+                        const sign = p.elo_change >= 0 ? '+' : '';
+                        const cls = p.elo_change >= 0 ? 'positive' : 'negative';
+                        const eloChip = p.wrestler_id
+                            ? `<span class="elo-chip ${cls}">${sign}${p.elo_change.toFixed(1)}</span>`
+                            : '';
+                        const eloBefore = p.wrestler_id && p.elo_before
+                            ? `<span class="elo-before">${Math.round(p.elo_before)}</span>`
+                            : '';
+                        return `<div class="participant-row">${link} ${eloBefore} ${eloChip}</div>`;
+                    }).join('');
+
+                    const matchTypeBadges = [
+                        `<span class="match-type-badge">${m.match_type || 'Match'}</span>`,
+                        m.is_title_match ? '<span class="match-type-badge title-badge">🏆 Title</span>' : '',
+                        m.is_draw ? '<span class="draw-badge">Draw</span>' : '',
+                    ].filter(Boolean).join(' ');
+
+                    html += `
+                        <div class="match-card${titleClass}">
+                            <div class="match-header">
+                                <span>Match ${i + 1}</span>
+                                ${matchTypeBadges}
+                            </div>
+                            <div class="match-result">
+                                <div class="match-team winners">${renderTeam(winners, true)}</div>
+                                <span class="vs-divider">${m.is_draw ? 'DRAW' : 'def.'}</span>
+                                <div class="match-team losers">${renderTeam(losers, false)}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                content.innerHTML = html;
+            } catch (e) {
+                console.error(e);
+                content.innerHTML = '<div class="error">Failed to load event</div>';
+            }
+        }
+
+        loadEvent();
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

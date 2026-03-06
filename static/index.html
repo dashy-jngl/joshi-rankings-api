@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joshitori — ELO Rankings for Women's Pro Wrestling</title>
+    <meta name="description" content="Joshitori tracks ELO ratings for joshi wrestlers across all promotions. Live rankings, head-to-head comparisons, and historical data for women's pro wrestling.">
+    <link rel="canonical" href="https://joshitori.com/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Joshitori — ELO Rankings for Women's Pro Wrestling">
+    <meta property="og:description" content="Joshitori tracks ELO ratings for joshi wrestlers across all promotions. Live rankings, head-to-head comparisons, and historical data for women's pro wrestling.">
+    <meta property="og:url" content="https://joshitori.com/">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Joshitori — ELO Rankings for Women's Pro Wrestling">
+    <meta name="twitter:description" content="Joshitori tracks ELO ratings for joshi wrestlers across all promotions. Live rankings, head-to-head comparisons, and historical data for women's pro wrestling.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>🗓️ This Week in Wrestling</h1>
+            <!-- <p>What's happening in women's pro wrestling</p> -->
+        </div>
+
+        <!-- Featured Section -->
+        <div id="featuredSection" style="display:none">
+            <!-- Top Gainers: Week / Month / Year -->
+            <div class="featured-trio">
+                <div class="featured-card" id="cardWeek">
+                    <div class="featured-period">🏅 Last 7 Days</div>
+                    <div class="featured-body featured-list"></div>
+                </div>
+                <div class="featured-card" id="cardMonth">
+                    <div class="featured-period">🏅 Last 30 Days</div>
+                    <div class="featured-body featured-list"></div>
+                </div>
+                <div class="featured-card" id="cardYear">
+                    <div class="featured-period">🏅 Last 365 Days</div>
+                    <div class="featured-body featured-list"></div>
+                </div>
+            </div>
+
+            <!-- Two Column Grid -->
+            <div class="featured-grid">
+                <div class="featured-panel">
+                    <h3>🏆 Recent Title Changes</h3>
+                    <div id="titleChanges" class="featured-list"></div>
+                </div>
+                <div class="featured-panel">
+                    <h3>💥 Biggest Upsets <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400">(last 30 days · singles & title matches)</span></h3>
+                    <div id="biggestUpsets" class="featured-list"></div>
+                </div>
+                <div class="featured-panel">
+                    <h3>🔥 Hot Streaks</h3>
+                    <div id="hotStreaks" class="featured-list"></div>
+                </div>
+                <div class="featured-panel">
+                    <h3>📈 Rising Stars <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400">(last 30 days · wrestlers below avg ELO with biggest gains)</span></h3>
+                    <div id="risingStars" class="featured-list"></div>
+                </div>
+            </div>
+
+            <!-- Recent Matches -->
+            <div class="featured-panel featured-full">
+                <h3>⚡ Recent Matches</h3>
+                <div id="recentMatches" class="featured-list"></div>
+            </div>
+        </div>
+
+    <script>
+        let allRankings = [];
+        async function loadFeatured() {
+            try {
+                const data = await fetch('/api/featured').then(r => r.json());
+                document.getElementById('featuredSection').style.display = '';
+
+                // Top gainer cards (top 5 each)
+                renderTopList('cardWeek', data.top_week);
+                renderTopList('cardMonth', data.top_month);
+                renderTopList('cardYear', data.top_year);
+
+                // Title changes
+                const tc = document.getElementById('titleChanges');
+                if (data.recent_title_changes && data.recent_title_changes.length) {
+                    tc.innerHTML = data.recent_title_changes.map(t => {
+                        const name = wLink(t.new_champion, t.wrestler_id, 0);
+                        const titleLink = t.cagematch_title_id
+                            ? `<a href="/title/${t.cagematch_title_id}" class="fi-title">${t.title_name}</a>`
+                            : `<span class="fi-title">${t.title_name}</span>`;
+                        const evtLink = t.cagematch_event_id ? `<a href="/event/${t.cagematch_event_id}" style="font-size:0.7rem;margin-left:4px;opacity:0.6" title="View event">🔗</a>` : '';
+                        return `<div class="featured-item">
+                            ${titleLink}
+                            <span class="fi-arrow">→</span>
+                            <span>${name}</span>
+                            <span class="fi-date">${t.won_date ? t.won_date.substring(0, 10) : ''}</span>
+                            ${evtLink}
+                        </div>`;
+                    }).join('');
+                } else {
+                    tc.innerHTML = '<div class="fi-empty">No recent title changes</div>';
+                }
+
+                // Upsets
+                const up = document.getElementById('biggestUpsets');
+                if (data.biggest_upsets && data.biggest_upsets.length) {
+                    up.innerHTML = data.biggest_upsets.map(u => `
+                        <div class="featured-item">
+                            <a href="/wrestler/${u.winner_id}">${u.winner_name}</a>
+                            <span class="fi-beat">def.</span>
+                            <a href="/wrestler/${u.loser_id}">${u.loser_name}</a>
+                            <span class="fi-gap">↑ ${Math.round(u.elo_gap)} ELO gap</span>
+                            <span style="color:var(--text-muted);font-size:0.75rem;margin-left:4px">${u.date?.slice(0,10) || ''}</span>
+                            ${u.cagematch_event_id ? `<a href="/event/${u.cagematch_event_id}" style="font-size:0.7rem;margin-left:4px;opacity:0.6" title="View event">🔗</a>` : ''}
+                        </div>
+                    `).join('');
+                } else {
+                    up.innerHTML = '<div class="fi-empty">No upsets found</div>';
+                }
+
+                // Hot streaks
+                const hs = document.getElementById('hotStreaks');
+                if (data.hot_streaks && data.hot_streaks.length) {
+                    hs.innerHTML = data.hot_streaks.map(s => `
+                        <div class="featured-item">
+                            <a href="/wrestler/${s.wrestler_id}">${s.name}</a>
+                            <span class="fi-streak fi-hot">🔥 ${s.streak}W</span>
+                            <span class="fi-elo">${Math.round(s.elo)}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    hs.innerHTML = '<div class="fi-empty">No active streaks</div>';
+                }
+
+                // Rising stars
+                const rs = document.getElementById('risingStars');
+                if (data.rising_stars && data.rising_stars.length) {
+                    rs.innerHTML = data.rising_stars.map(s => `
+                        <div class="featured-item">
+                            <a href="/wrestler/${s.wrestler_id}">${s.name}</a>
+                            <span class="fi-gain">+${Math.round(s.elo_gain_30d)} ELO</span>
+                            <span class="fi-elo-range">${Math.round(s.start_elo)} → ${Math.round(s.elo)}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    rs.innerHTML = '<div class="fi-empty">No rising stars</div>';
+                }
+
+                // Recent matches
+                const rm = document.getElementById('recentMatches');
+                if (data.recent_matches && data.recent_matches.length) {
+                    rm.innerHTML = data.recent_matches.map(m => {
+                        const winners = m.participants.filter(p => p.is_winner);
+                        const losers = m.participants.filter(p => !p.is_winner);
+                        const winNames = winners.map(p => wLink(p.name, p.wrestler_id, p.ghost_cagematch_id)).join(' & ');
+                        const loseNames = losers.map(p => wLink(p.name, p.wrestler_id, p.ghost_cagematch_id)).join(' & ');
+                        const eloStr = winners.length ? `<span class="fi-elo-change positive">+${winners[0].elo_change.toFixed(1)}</span>` : '';
+                        const evtLink = m.cagematch_event_id
+                            ? `<a href="/event/${m.cagematch_event_id}" class="fi-event">${m.event_name}</a>`
+                            : `<span class="fi-event">${m.event_name}</span>`;
+                        return `<div class="featured-item match-item">
+                            ${evtLink}
+                            <span class="fi-date">${m.date}</span>
+                            <span class="fi-result">${winNames} <span class="fi-beat">def.</span> ${loseNames} ${eloStr}</span>
+                        </div>`;
+                    }).join('');
+                } else {
+                    rm.innerHTML = '<div class="fi-empty">No recent matches</div>';
+                }
+
+            } catch (e) {
+                console.error('Failed to load featured:', e);
+            }
+        }
+
+        function wLink(name, wrestlerId, ghostCmid) {
+            if (wrestlerId) return `<a href="/wrestler/${wrestlerId}">${name}</a>`;
+            const params = new URLSearchParams({name});
+            if (ghostCmid) params.set('cmid', ghostCmid);
+            return `<a href="/wrestler/0?${params}" style="color:var(--text-muted)">${name}</a>`;
+        }
+
+        function renderTopList(cardId, wrestlers) {
+            const card = document.getElementById(cardId);
+            const body = card.querySelector('.featured-body');
+            if (!wrestlers || !wrestlers.length) {
+                body.innerHTML = '<div class="fi-empty">No data</div>';
+                return;
+            }
+            body.innerHTML = wrestlers.map((w, i) => {
+                const gainClass = w.elo_gain >= 0 ? 'positive' : 'negative';
+                const gainSign = w.elo_gain >= 0 ? '+' : '';
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `<span style="opacity:0.5">${i+1}.</span>`;
+                return `<div class="featured-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+                    <span style="min-width:24px;text-align:center">${medal}</span>
+                    <a href="/wrestler/${w.wrestler_id}" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${w.name}</a>
+                    <span class="fi-gain ${gainClass}" style="font-weight:600">${gainSign}${Math.round(w.elo_gain)}</span>
+                    <span style="color:var(--text-muted);font-size:0.75rem;min-width:50px;text-align:right">${w.wins}W-${w.losses}L</span>
+                </div>`;
+            }).join('');
+        }
+
+        // --- Init ---
+        loadFeatured();
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

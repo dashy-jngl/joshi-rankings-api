@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Promotions | Joshitori</title>
+    <meta name="description" content="Browse all joshi wrestling promotions tracked by Joshitori including STARDOM, TJPW, AEW, WWE, and more.">
+    <link rel="canonical" href="https://joshitori.com/promotions">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Promotions | Joshitori">
+    <meta property="og:description" content="Browse all joshi wrestling promotions tracked by Joshitori including STARDOM, TJPW, AEW, WWE, and more.">
+    <meta property="og:url" content="https://joshitori.com/promotions">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Promotions | Joshitori">
+    <meta name="twitter:description" content="Browse all joshi wrestling promotions tracked by Joshitori including STARDOM, TJPW, AEW, WWE, and more.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+<div class="container">
+        <div class="page-header">
+            <h1>Promotions</h1>
+            <p>Browse wrestling promotions with tracked women's divisions</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="value" id="statTotal">—</div>
+                <div class="label">Total Promotions</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="statActive">—</div>
+                <div class="label">Active</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="statWrestlers">—</div>
+                <div class="label">Total Wrestlers</div>
+            </div>
+        </div>
+
+        <div class="filters-bar">
+            <input type="text" id="searchBox" placeholder="Search promotions..." oninput="applyFilters()">
+            <select id="countryFilter" onchange="applyFilters()">
+                <option value="">All Countries</option>
+            </select>
+            <select id="regionFilter" onchange="applyFilters()">
+                <option value="">All Regions</option>
+            </select>
+            <select id="statusFilter" onchange="applyFilters()">
+                <option value="">All Statuses</option>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+            </select>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="cursor:pointer" onclick="sortBy('name')">Name</th>
+                        <th style="cursor:pointer" onclick="sortBy('country')">Country</th>
+                        <th style="cursor:pointer" onclick="sortBy('status')">Status</th>
+                        <th style="cursor:pointer" onclick="sortBy('wrestler_count')">Wrestlers</th>
+                        <th style="cursor:pointer" onclick="sortBy('avg_elo')">Avg ELO</th>
+                        <th style="cursor:pointer" onclick="sortBy('title_count')">Titles</th>
+                    </tr>
+                </thead>
+                <tbody id="promosBody">
+                    <tr><td colspan="6"><div class="loading">Loading promotions...</div></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let allPromos = [];
+        let currentSort = 'wrestler_count';
+        let sortAsc = false;
+
+        async function loadData() {
+            try {
+                const data = await fetch('/api/promotions/stats?limit=500').then(r => r.json());
+                allPromos = data;
+
+                document.getElementById('statTotal').textContent = data.length;
+                document.getElementById('statActive').textContent = data.filter(p => p.status === 'Active').length;
+                document.getElementById('statWrestlers').textContent = data.reduce((s, p) => s + p.wrestler_count, 0).toLocaleString();
+
+                // Country filter
+                const countries = [...new Set(data.map(p => p.country).filter(Boolean))].sort();
+                const cSel = document.getElementById('countryFilter');
+                countries.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; cSel.appendChild(o); });
+
+                // Region filter
+                const regions = [...new Set(data.map(p => p.region).filter(Boolean))].sort();
+                const rSel = document.getElementById('regionFilter');
+                regions.forEach(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; rSel.appendChild(o); });
+
+                applyFilters();
+            } catch(e) {
+                document.getElementById('promosBody').innerHTML = '<tr><td colspan="6"><div class="empty">Failed to load</div></td></tr>';
+            }
+        }
+
+        function applyFilters() {
+            const search = document.getElementById('searchBox').value.toLowerCase();
+            const country = document.getElementById('countryFilter').value;
+            const region = document.getElementById('regionFilter').value;
+            const status = document.getElementById('statusFilter').value;
+
+            let filtered = allPromos;
+            if (search) filtered = filtered.filter(p => p.name.toLowerCase().includes(search) || (p.abbreviation||'').toLowerCase().includes(search));
+            if (country) filtered = filtered.filter(p => p.country === country);
+            if (region) filtered = filtered.filter(p => p.region === region);
+            if (status) filtered = filtered.filter(p => p.status === status);
+
+            filtered = sortData(filtered);
+            render(filtered);
+        }
+
+        function sortBy(col) {
+            if (currentSort === col) sortAsc = !sortAsc;
+            else { currentSort = col; sortAsc = col === 'name'; }
+            applyFilters();
+        }
+
+        function sortData(data) {
+            const dir = sortAsc ? 1 : -1;
+            return [...data].sort((a, b) => {
+                const va = a[currentSort], vb = b[currentSort];
+                if (typeof va === 'string') return dir * (va||'').localeCompare(vb||'');
+                return dir * ((va||0) - (vb||0));
+            });
+        }
+
+        function render(promos) {
+            const body = document.getElementById('promosBody');
+            if (!promos.length) { body.innerHTML = '<tr><td colspan="6"><div class="empty">No promotions found</div></td></tr>'; return; }
+            body.innerHTML = promos.map(p => `
+                <tr onclick="window.location='/promotion/${p.cagematch_id}'">
+                    <td><strong>${p.name}</strong>${p.abbreviation ? ` <span style="color:var(--text-muted)">(${p.abbreviation})</span>` : ''}</td>
+                    <td>${p.country || '—'}</td>
+                    <td><span class="status-badge ${p.status === 'Active' ? 'status-active' : 'status-inactive'}">${p.status || '—'}</span></td>
+                    <td>${p.wrestler_count}</td>
+                    <td>${p.avg_elo > 0 ? Math.round(p.avg_elo) : '—'}</td>
+                    <td>${p.title_count}</td>
+                </tr>
+            `).join('');
+        }
+
+        loadData();
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

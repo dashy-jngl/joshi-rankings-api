@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin | Joshitori</title>
+    <meta name="description" content="Joshitori admin control panel.">
+    <link rel="canonical" href="https://joshitori.com/admin">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Admin | Joshitori">
+    <meta property="og:description" content="Joshitori admin control panel.">
+    <meta property="og:url" content="https://joshitori.com/admin">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Admin | Joshitori">
+    <meta name="twitter:description" content="Joshitori admin control panel.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <style>
+        /* Admin-specific layout */
+        .api-key-box {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-left: auto;
+            padding-right: 12px;
+        }
+        .api-key-box input {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            width: 180px;
+        }
+
+        /* Admin grid layout */
+        .admin-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .full-width { grid-column: 1 / -1; }
+
+        /* Admin card overrides */
+        .card h2 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: var(--accent);
+        }
+
+        /* Color button variants */
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-pink { background: var(--accent); color: white; }
+        .btn-pink:hover { background: #c2185b; }
+        .btn-green { background: var(--green); color: white; }
+        .btn-green:hover { background: #388e3c; }
+        .btn-red { background: var(--red); color: white; }
+        .btn-red:hover { background: #d32f2f; }
+        .btn-blue { background: var(--blue); color: white; }
+        .btn-blue:hover { background: #1976d2; }
+        .btn-purple { background: #9c27b0; color: white; }
+        .btn-purple:hover { background: #7b1fa2; }
+        .btn-orange { background: #ff9800; color: white; }
+        .btn-orange:hover { background: #f57c00; }
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        /* Status indicators */
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .status-row:last-child { border-bottom: none; }
+        .status-label { color: var(--text-muted); }
+        .status-value { font-weight: 600; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-on { background: var(--green); color: white; }
+        .badge-off { background: #555; color: #aaa; }
+
+        /* Log */
+        .log {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 12px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.8rem;
+            max-height: 200px;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+        .log-entry { color: var(--text-muted); }
+        .log-entry.success { color: var(--green); }
+        .log-entry.error { color: var(--red); }
+        .log-entry.info { color: var(--blue); }
+
+        /* Wrestler grid */
+        .wrestler-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 10px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .wrestler-card {
+            background: var(--bg-hover);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .wrestler-card:hover { border-color: var(--accent); background: #2a1a2a; }
+        .wrestler-card.active { border-color: var(--accent); background: #2a1a2a; }
+        .wrestler-name { font-weight: 600; font-size: 0.95rem; }
+        .wrestler-promo { color: var(--text-muted); font-size: 0.8rem; margin-top: 2px; }
+        .wrestler-elo { color: var(--accent); font-weight: 700; font-size: 1.1rem; margin-top: 4px; }
+        .wrestler-record { color: var(--text-muted); font-size: 0.8rem; }
+
+        /* Detail panel */
+        .detail-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+        .detail-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+        .detail-name { font-size: 1.4rem; font-weight: 700; }
+        .detail-elo { font-size: 2rem; font-weight: 800; color: var(--accent); }
+        .detail-section { margin-top: 15px; }
+        .detail-section h3 { font-size: 0.9rem; color: var(--accent); margin-bottom: 8px; }
+        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .detail-field { display: flex; justify-content: space-between; padding: 4px 0; }
+        .detail-field .label { color: var(--text-muted); font-size: 0.85rem; }
+        .detail-field .value { font-size: 0.85rem; }
+        .social-link { color: var(--blue); text-decoration: none; font-size: 0.85rem; margin-right: 12px; }
+        .social-link:hover { text-decoration: underline; }
+
+        /* Stats bar */
+        .stats-bar {
+            display: flex;
+            gap: 20px;
+            padding: 15px 30px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+        .stat { text-align: center; }
+        .stat-value { font-size: 1.5rem; font-weight: 800; color: var(--accent); }
+        .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+    <script>
+        // Admin-only: inject API key box into nav top bar
+        (function() {
+            const navRight = document.querySelector('.nav-top-right');
+            if (!navRight) return;
+            const box = document.createElement('div');
+            box.className = 'api-key-box';
+            box.innerHTML = '<span id="authStatus" style="color:#4caf50;font-size:0.85rem;margin-right:8px"></span><input type="text" id="apiKey" placeholder="API Key (fallback)" title="Auto-authenticates if logged in as admin" autocomplete="off" style="-webkit-text-security:disc;" />';
+            navRight.insertBefore(box, navRight.firstChild);
+        })();
+    </script>
+
+    <div class="stats-bar" id="statsBar">
+        <div class="stat">
+            <div class="stat-value" id="statWrestlers">-</div>
+            <div class="stat-label">Wrestlers</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value" id="statMatches">-</div>
+            <div class="stat-label">Matches</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value" id="statTitles">-</div>
+            <div class="stat-label">Titles</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value" id="statTopElo">-</div>
+            <div class="stat-label">Top ELO</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value" id="statSkipped">-</div>
+            <div class="stat-label">Skipped (Male)</div>
+        </div>
+    </div>
+
+
+    <!-- Title tracker is just the stat in the bar above -->
+
+    <div class="admin-container">
+        <!-- Scraper Controls -->
+        <div class="card">
+            <h2>🕷️ Scraper Controls</h2>
+            <div class="btn-group" style="margin-bottom: 15px;">
+                <button class="btn btn-pink" onclick="runCollect()">Collect Matches</button>
+                <button class="btn btn-blue" onclick="runRecalculate()">Recalculate ELO</button>
+            </div>
+            <div class="btn-group" style="margin-bottom: 15px;">
+                <button class="btn btn-purple" onclick="collectTitles()">🏆 Collect Titles</button>
+                <button class="btn btn-orange" onclick="collectPromotions()">🏢 Collect Promotions</button>
+                <button class="btn btn-blue" onclick="runValidate()">🔍 Validate & Fix</button>
+            </div>
+            <div class="btn-group" style="margin-bottom: 15px;">
+                <button class="btn btn-orange" onclick="runMatches()">🕷️ Run Match Update</button>
+                <button class="btn btn-purple" onclick="runProfiles()">👤 Run Profile Refresh</button>
+            </div>
+            <div class="btn-group" style="margin-bottom: 15px;">
+                <button class="btn btn-green" id="cronStartBtn" onclick="cronStart()">Start Cron</button>
+                <button class="btn btn-red" id="cronStopBtn" onclick="cronStop()">Stop Cron</button>
+            </div>
+
+            <div class="status-row">
+                <span class="status-label">Currently Doing</span>
+                <span class="status-value" id="currentWrestler" style="color: #ff9800;">Idle</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Cron</span>
+                <span id="cronStatus"><span class="badge badge-off">OFF</span></span>
+            </div>
+
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+                <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">🕷️ Match Scraper</h3>
+                <div class="status-row">
+                    <span class="status-label">Status</span>
+                    <span id="matchScrapeStatus"><span class="badge badge-off">IDLE</span></span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Last Run</span>
+                    <span class="status-value" id="matchLastRun">Never</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Matches Found</span>
+                    <span class="status-value" id="matchesFound">0</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Next Run</span>
+                    <span class="status-value" id="matchNextRun">—</span>
+                </div>
+            </div>
+
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+                <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">👤 Profile Refresher</h3>
+                <div class="status-row">
+                    <span class="status-label">Status</span>
+                    <span id="profileRefreshStatus"><span class="badge badge-off">IDLE</span></span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Last Run</span>
+                    <span class="status-value" id="profileLastRun">Never</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Wrestlers Updated</span>
+                    <span class="status-value" id="profilesUpdated">0</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Next Run</span>
+                    <span class="status-value" id="profileNextRun">—</span>
+                </div>
+            </div>
+            <div class="status-row" style="margin-top: 12px;">
+                <span class="status-label">Crawl Delay</span>
+                <span class="status-value">
+                    <span id="currentDelay">—</span>s
+                    <input type="number" id="delayInput" min="0" style="width:70px;margin-left:8px;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);" placeholder="sec">
+                    <button class="btn btn-blue" style="padding:4px 10px;font-size:0.8rem;margin-left:4px;" onclick="updateDelay()">Update</button>
+                </span>
+            </div>
+        </div>
+
+        <!-- Activity Log -->
+        <div class="card">
+            <h2>📋 Activity Log</h2>
+            <div class="log" id="activityLog">
+                <div class="log-entry info">Dashboard loaded. Enter API key to use controls.</div>
+            </div>
+        </div>
+
+        <!-- Wrestler List -->
+        <div class="card full-width">
+            <h2>👊 Wrestlers (<span id="wrestlerCount">0</span>)</h2>
+            <div style="margin-bottom: 12px; display: flex; gap: 8px;">
+                <input type="text" id="searchBox" placeholder="Search wrestlers..." 
+                    style="background: #111; border: 1px solid #333; color: #fff; padding: 6px 12px; border-radius: 4px; flex: 1;"
+                    oninput="filterWrestlers()" />
+                <select id="promoFilter" onchange="filterWrestlers()"
+                    style="background: #111; border: 1px solid #333; color: #fff; padding: 6px 12px; border-radius: 4px;">
+                    <option value="">All Promotions</option>
+                </select>
+                <select id="sortBy" onchange="sortWrestlers()"
+                    style="background: #111; border: 1px solid #333; color: #fff; padding: 6px 12px; border-radius: 4px;">
+                    <option value="elo">Sort: ELO ↓</option>
+                    <option value="name">Sort: Name</option>
+                    <option value="wins">Sort: Wins ↓</option>
+                    <option value="matches">Sort: Matches ↓</option>
+                </select>
+            </div>
+            <div class="wrestler-grid" id="wrestlerGrid">
+                <div class="empty">No wrestlers yet — run a collect first!</div>
+            </div>
+        </div>
+
+        <!-- Wrestler Detail -->
+        <div class="card full-width" id="detailPanel" style="display: none;">
+            <h2>📋 Wrestler Detail</h2>
+            <div id="detailContent"></div>
+        </div>
+
+        <!-- User Management -->
+        <div class="card full-width">
+            <h2>👥 User Management</h2>
+            <div style="margin-bottom: 15px;">
+                <button class="btn btn-green" onclick="showAddUserForm()">+ Add User</button>
+            </div>
+
+            <div id="addUserForm" style="display:none; background:#111; border:1px solid #333; border-radius:6px; padding:15px; margin-bottom:15px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:8px; align-items:end;">
+                    <div>
+                        <label style="font-size:0.75rem;color:#888;">Username</label>
+                        <input type="text" id="newUsername" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:6px 10px;border-radius:4px;" />
+                    </div>
+                    <div>
+                        <label style="font-size:0.75rem;color:#888;">Display Name</label>
+                        <input type="text" id="newDisplayName" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:6px 10px;border-radius:4px;" />
+                    </div>
+                    <div>
+                        <label style="font-size:0.75rem;color:#888;">Password</label>
+                        <input type="password" id="newPassword" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:6px 10px;border-radius:4px;" />
+                    </div>
+                    <div>
+                        <label style="font-size:0.75rem;color:#888;">Role</label>
+                        <select id="newRole" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:6px 10px;border-radius:4px;">
+                            <option value="user">User</option>
+                            <option value="moderator">Moderator</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-top:10px; display:flex; gap:8px;">
+                    <button class="btn btn-green" onclick="createUser()">Create</button>
+                    <button class="btn" style="background:#333;color:#ccc;" onclick="document.getElementById('addUserForm').style.display='none'">Cancel</button>
+                </div>
+            </div>
+
+            <table style="width:100%; border-collapse:collapse; font-size:0.85rem;" id="usersTable">
+                <thead>
+                    <tr style="border-bottom:1px solid #333;">
+                        <th style="text-align:left;padding:8px;color:#888;">Username</th>
+                        <th style="text-align:left;padding:8px;color:#888;">Display Name</th>
+                        <th style="text-align:left;padding:8px;color:#888;">Role</th>
+                        <th style="text-align:left;padding:8px;color:#888;">Last Login</th>
+                        <th style="text-align:right;padding:8px;color:#888;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="usersBody"><tr><td colspan="5" style="padding:20px;text-align:center;color:#555;">Loading...</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- Test Scrape Section -->
+        <div class="card full-width">
+            <h2>🧪 Test Scrape & Validate</h2>
+            <p style="color: #888; font-size: 0.85rem; margin-bottom: 15px;">
+                Scrape specific wrestlers and validate match counts against Cagematch.
+            </p>
+            
+            <div style="margin-bottom: 15px;">
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <input type="text" id="testWrestlerSearch" placeholder="Search wrestler to add..." 
+                        style="background: #111; border: 1px solid #333; color: #fff; padding: 6px 12px; border-radius: 4px; flex: 1;"
+                        oninput="searchTestWrestlers()" />
+                    <button class="btn btn-green" onclick="addFromSearch()">Add</button>
+                </div>
+                <div id="testSearchResults" style="max-height: 150px; overflow-y: auto; display: none; background: #111; border: 1px solid #333; border-radius: 4px;"></div>
+                
+                <div id="testWrestlerTags" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+                </div>
+            </div>
+            
+            <div class="btn-group" style="margin-bottom: 15px;">
+                <button class="btn btn-red" onclick="testClear()">🗑️ Clear All Match Data</button>
+                <button class="btn btn-pink" onclick="testScrape()">🕷️ Run Test Scrape</button>
+                <button class="btn btn-blue" onclick="testValidate()">🔍 Run Test Validate</button>
+            </div>
+            
+            <div id="scrapeResultsSection" style="display: none;">
+                <h3 style="color: #e91e63; margin-bottom: 10px;">Scrape Results</h3>
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #333;">
+                            <th style="text-align: left; padding: 8px; color: #888;">Wrestler</th>
+                            <th style="text-align: right; padding: 8px; color: #888;">CM Matches</th>
+                            <th style="text-align: right; padding: 8px; color: #888;">New Stored</th>
+                            <th style="text-align: right; padding: 8px; color: #888;">Total in DB</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scrapeResultsBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="testResultsSection" style="display: none; margin-top: 15px;">
+                <h3 style="color: #e91e63; margin-bottom: 10px;">Validation Results</h3>
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #333;">
+                            <th style="text-align: left; padding: 8px; color: #888;">Wrestler</th>
+                            <th style="text-align: right; padding: 8px; color: #888;">CM Count</th>
+                            <th style="text-align: right; padding: 8px; color: #888;">DB Count</th>
+                            <th style="text-align: right; padding: 8px; color: #888;">Promo Hist</th>
+                            <th style="text-align: right; padding: 8px; color: #888;">Diff (CM-DB)</th>
+                            <th style="text-align: right; padding: 8px; color: #888;">Match Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody id="testResultsBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State ---
+        let wrestlers = [];
+        const API = '';  // same origin
+
+        function getKey() {
+            return document.getElementById('apiKey').value;
+        }
+
+        function addLog(msg, type = '') {
+            const log = document.getElementById('activityLog');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const time = new Date().toLocaleTimeString();
+            entry.textContent = `[${time}] ${msg}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function api(method, path, needsKey = false) {
+            const headers = { 'Content-Type': 'application/json' };
+            const key = getKey();
+            if (needsKey && key) headers['X-API-Key'] = key;
+
+            try {
+                const resp = await fetch(`${API}${path}`, { method, headers, credentials: 'include' });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || resp.statusText);
+                return data;
+            } catch (e) {
+                addLog(`Error: ${e.message}`, 'error');
+                throw e;
+            }
+        }
+
+        // --- Scraper Controls ---
+        async function runCollect() {
+            addLog('Starting match collection...', 'info');
+            try {
+                const data = await api('POST', '/api/scraper/collect', true);
+                addLog(data.message, 'success');
+            } catch (e) {}
+        }
+
+        async function runRecalculate() {
+            if (!confirm('This will reset ALL ELO ratings and recalculate from scratch. Continue?')) return;
+            addLog('Starting ELO recalculation...', 'info');
+            try {
+                const data = await api('POST', '/api/scraper/recalculate', true);
+                addLog(data.message, 'success');
+            } catch (e) {}
+        }
+
+        async function collectTitles() {
+            addLog('Starting title reign collection...', 'info');
+            try {
+                const data = await api('POST', '/api/scraper/collect/titles/bytitle', true);
+                addLog(data.message, 'success');
+            } catch (e) {}
+        }
+
+        async function runValidate() {
+            addLog('Starting match validation — comparing CM expected counts vs DB...', 'info');
+            try {
+                const data = await api('POST', '/api/scraper/validate', true);
+                addLog(data.message || 'Validation started', 'success');
+            } catch(e) { addLog('Validation failed: ' + e.message, 'error'); }
+        }
+
+        async function collectPromotions() {
+            addLog('Starting promotion history collection...', 'info');
+            try {
+                const data = await api('POST', '/api/scraper/collect/promotions', true);
+                addLog(data.message, 'success');
+            } catch (e) {}
+        }
+
+        async function runMatches() {
+            addLog('Starting match update...', 'info');
+            try {
+                const data = await api('POST', '/api/scraper/run/matches', true);
+                addLog(data.message, 'success');
+                refreshStatus();
+            } catch (e) {}
+        }
+
+        async function runProfiles() {
+            addLog('Starting profile refresh...', 'info');
+            try {
+                const data = await api('POST', '/api/scraper/run/profiles', true);
+                addLog(data.message, 'success');
+                refreshStatus();
+            } catch (e) {}
+        }
+
+        async function cronStart() {
+            addLog('Starting cron (matches daily, profiles weekly)...', 'info');
+            try {
+                const data = await api('POST', '/api/scraper/cron/start', true);
+                addLog(data.message, 'success');
+                refreshStatus();
+            } catch (e) {}
+        }
+
+        async function cronStop() {
+            addLog('Stopping cron...', 'info');
+            try {
+                const data = await api('POST', '/api/scraper/cron/stop', true);
+                addLog(data.message, 'success');
+                refreshStatus();
+            } catch (e) {}
+        }
+
+        // --- Status ---
+        function formatTime(isoStr) {
+            if (!isoStr) return 'Never';
+            return new Date(isoStr).toLocaleString();
+        }
+
+        function timeUntil(isoStr) {
+            if (!isoStr) return '—';
+            const diff = new Date(isoStr) - new Date();
+            if (diff <= 0) return 'Soon';
+            const hours = Math.floor(diff / 3600000);
+            const mins = Math.floor((diff % 3600000) / 60000);
+            if (hours > 0) return `${hours}h ${mins}m`;
+            return `${mins}m`;
+        }
+
+        async function refreshStatus() {
+            try {
+                const data = await api('GET', '/api/scraper/status', true);
+
+                // Current activity
+                const currentEl = document.getElementById('currentWrestler');
+                if (data.is_running && data.current_activity) {
+                    currentEl.textContent = data.current_activity;
+                    currentEl.style.color = '#ff9800';
+                } else {
+                    currentEl.textContent = 'Idle';
+                    currentEl.style.color = '#666';
+                }
+
+                // Cron status
+                const cronEl = document.getElementById('cronStatus');
+                if (data.cron_running) {
+                    cronEl.innerHTML = '<span class="badge badge-on">RUNNING</span>';
+                } else {
+                    cronEl.innerHTML = '<span class="badge badge-off">OFF</span>';
+                }
+
+                // Match scraper
+                const ms = data.match_scraper || {};
+                document.getElementById('matchScrapeStatus').innerHTML = ms.running
+                    ? '<span class="badge badge-on">RUNNING</span>'
+                    : '<span class="badge badge-off">IDLE</span>';
+                document.getElementById('matchLastRun').textContent = formatTime(ms.last_run);
+                document.getElementById('matchesFound').textContent = ms.matches_found || 0;
+                document.getElementById('matchNextRun').textContent = ms.next_run ? timeUntil(ms.next_run) : '—';
+
+                // Profile refresher
+                const pr = data.profile_refresher || {};
+                document.getElementById('profileRefreshStatus').innerHTML = pr.running
+                    ? '<span class="badge badge-on">RUNNING</span>'
+                    : '<span class="badge badge-off">IDLE</span>';
+                document.getElementById('profileLastRun').textContent = formatTime(pr.last_run);
+                document.getElementById('profilesUpdated').textContent = pr.wrestlers_updated || 0;
+                document.getElementById('profileNextRun').textContent = pr.next_run ? timeUntil(pr.next_run) : '—';
+            } catch (e) {}
+        }
+
+        // --- Wrestlers ---
+        async function loadWrestlers() {
+            try {
+                wrestlers = await api('GET', '/api/wrestlers');
+                document.getElementById('wrestlerCount').textContent = wrestlers.length;
+                document.getElementById('statWrestlers').textContent = wrestlers.length;
+
+                // Populate promotion filter (preserve selection)
+                const currentPromo = document.getElementById('promoFilter').value;
+                const promos = [...new Set(wrestlers.map(w => w.promotion).filter(Boolean))].sort();
+                const select = document.getElementById('promoFilter');
+                select.innerHTML = '<option value="">All Promotions</option>';
+                promos.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p;
+                    opt.textContent = p;
+                    select.appendChild(opt);
+                });
+                select.value = currentPromo; // restore selection
+
+                // Stats
+                if (wrestlers.length > 0) {
+                    const topElo = Math.max(...wrestlers.map(w => w.elo));
+                    document.getElementById('statTopElo').textContent = Math.round(topElo);
+                }
+
+                // Re-apply current filters instead of resetting
+                filterWrestlers();
+            } catch (e) {}
+        }
+
+        async function loadMatchCount() {
+            try {
+                const data = await api('GET', '/api/matches/count');
+                document.getElementById('statMatches').textContent = data.count;
+            } catch (e) {}
+        }
+
+        async function loadSkippedCount() {
+            try {
+                const data = await api('GET', '/api/skipped/count');
+                document.getElementById('statSkipped').textContent = data.count.toLocaleString();
+            } catch (e) {}
+        }
+
+        function renderWrestlers(list) {
+            const grid = document.getElementById('wrestlerGrid');
+            if (list.length === 0) {
+                grid.innerHTML = '<div class="empty">No wrestlers found</div>';
+                return;
+            }
+
+            grid.innerHTML = list.map(w => `
+                <div class="wrestler-card" onclick="showWrestler(${w.id})" id="wcard-${w.id}">
+                    <div class="wrestler-name">${w.name}</div>
+                    <div class="wrestler-promo">${w.promotion || 'Unknown'}</div>
+                    <div class="wrestler-elo">${Math.round(w.elo)}</div>
+                    <div class="wrestler-record">${w.wins}W - ${w.losses}L - ${w.draws}D · ${w.wins + w.losses + w.draws} matches</div>
+                </div>
+            `).join('');
+        }
+
+        function filterWrestlers() {
+            const search = document.getElementById('searchBox').value.toLowerCase();
+            const promo = document.getElementById('promoFilter').value;
+            const sortBy = document.getElementById('sortBy').value;
+
+            let filtered = [...wrestlers];
+            if (search) filtered = filtered.filter(w => w.name.toLowerCase().includes(search));
+            if (promo) filtered = filtered.filter(w => w.promotion === promo);
+
+            switch (sortBy) {
+                case 'elo': filtered.sort((a, b) => b.elo - a.elo); break;
+                case 'name': filtered.sort((a, b) => a.name.localeCompare(b.name)); break;
+                case 'wins': filtered.sort((a, b) => b.wins - a.wins); break;
+                case 'matches': filtered.sort((a, b) => b.match_count - a.match_count); break;
+            }
+
+            renderWrestlers(filtered);
+        }
+
+        function sortWrestlers() {
+            filterWrestlers();
+        }
+
+        // --- Wrestler Detail ---
+        async function showWrestler(id) {
+            // Highlight active card
+            document.querySelectorAll('.wrestler-card').forEach(c => c.classList.remove('active'));
+            const card = document.getElementById(`wcard-${id}`);
+            if (card) card.classList.add('active');
+
+            try {
+                const w = await api('GET', `/api/wrestlers/${id}`);
+                const panel = document.getElementById('detailPanel');
+                panel.style.display = 'block';
+
+                const aliases = (w.aliases || []).map(a => `<span class="alias-tag">${a.alias}</span>`).join('');
+                const socials = (w.socials || []).map(s => `<a class="social-link" href="${s.url}" target="_blank">${s.name}</a>`).join('');
+                const moves = (w.signature_moves || []).join(', ') || 'Unknown';
+
+                document.getElementById('detailContent').innerHTML = `
+                    <div class="detail-header">
+                        <div>
+                            <div class="detail-name">${w.name}</div>
+                            <div style="color: #888; margin-top: 4px;">${w.promotion || 'Unknown promotion'}</div>
+                            <div style="margin-top: 6px;">${aliases || ''}</div>
+                        </div>
+                        <div class="detail-elo">${Math.round(w.elo)}</div>
+                    </div>
+
+                    <div class="detail-grid">
+                        <div class="detail-section">
+                            <h3>Personal Info</h3>
+                            <div class="detail-field"><span class="label">Birthday</span><span class="value">${w.birthday && w.birthday !== '0001-01-01T00:00:00Z' ? new Date(w.birthday).toLocaleDateString() : 'Unknown'}</span></div>
+                            <div class="detail-field"><span class="label">Birthplace</span><span class="value">${w.birthplace || 'Unknown'}</span></div>
+                            <div class="detail-field"><span class="label">Height</span><span class="value">${w.height || 'Unknown'}</span></div>
+                            <div class="detail-field"><span class="label">Weight</span><span class="value">${w.weight || 'Unknown'}</span></div>
+                            <div class="detail-field"><span class="label">Debut</span><span class="value">${w.debut_year || 'Unknown'}</span></div>
+                            <div class="detail-field"><span class="label">Style</span><span class="value">${w.wrestling_style || 'Unknown'}</span></div>
+                        </div>
+                        <div class="detail-section">
+                            <h3>Stats</h3>
+                            <div class="detail-field"><span class="label">ELO</span><span class="value">${Math.round(w.elo)}</span></div>
+                            <div class="detail-field"><span class="label">Wins</span><span class="value" style="color: #4caf50;">${w.wins}</span></div>
+                            <div class="detail-field"><span class="label">Losses</span><span class="value" style="color: #f44336;">${w.losses}</span></div>
+                            <div class="detail-field"><span class="label">Draws</span><span class="value">${w.draws}</span></div>
+                            <div class="detail-field"><span class="label">Win Rate</span><span class="value">${w.wins + w.losses > 0 ? Math.round(w.wins / (w.wins + w.losses) * 100) : 0}%</span></div>
+                            <div class="detail-field"><span class="label">Cagematch ID</span><span class="value">${w.cagematch_id || 'N/A'}</span></div>
+                        </div>
+                    </div>
+
+                    ${socials ? `<div class="detail-section"><h3>Socials</h3>${socials}</div>` : ''}
+                    ${moves !== 'Unknown' ? `<div class="detail-section"><h3>Signature Moves</h3><div style="font-size: 0.85rem;">${moves}</div></div>` : ''}
+                `;
+
+                panel.scrollIntoView({ behavior: 'smooth' });
+            } catch (e) {}
+        }
+
+        // --- Titles ---
+        async function loadTitles() {
+            try {
+                const titles = await api('GET', '/api/titles');
+                document.getElementById('statTitles').textContent = titles.length;
+            } catch (e) {}
+        }
+
+        // --- Test Scrape ---
+        let testWrestlerIds = [];
+        let testWrestlerNames = {};
+        const defaultTestWrestlers = ['Kouki Amarei', 'Jaguar Yokota', 'Zaria', 'Taya Valkyrie', 'Jordynne Grace', 'Tessa Blanchard', 'Risa Sera'];
+
+        function initTestWrestlers() {
+            for (const name of defaultTestWrestlers) {
+                const w = wrestlers.find(w => w.name.toLowerCase() === name.toLowerCase());
+                if (w && !testWrestlerIds.includes(w.id)) {
+                    testWrestlerIds.push(w.id);
+                    testWrestlerNames[w.id] = w.name;
+                }
+            }
+            renderTestTags();
+        }
+
+        function renderTestTags() {
+            const container = document.getElementById('testWrestlerTags');
+            container.innerHTML = testWrestlerIds.map(id => `
+                <span style="background: #2a2a2a; padding: 4px 10px; border-radius: 4px; font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
+                    ${testWrestlerNames[id]}
+                    <span style="cursor: pointer; color: #f44336;" onclick="removeTestWrestler(${id})">&times;</span>
+                </span>
+            `).join('');
+        }
+
+        function removeTestWrestler(id) {
+            testWrestlerIds = testWrestlerIds.filter(x => x !== id);
+            delete testWrestlerNames[id];
+            renderTestTags();
+        }
+
+        function searchTestWrestlers() {
+            const query = document.getElementById('testWrestlerSearch').value.toLowerCase();
+            const results = document.getElementById('testSearchResults');
+            if (query.length < 2) { results.style.display = 'none'; return; }
+            const matches = wrestlers.filter(w => w.name.toLowerCase().includes(query) && !testWrestlerIds.includes(w.id)).slice(0, 10);
+            if (matches.length === 0) { results.style.display = 'none'; return; }
+            results.style.display = 'block';
+            results.innerHTML = matches.map(w => `
+                <div style="padding: 6px 10px; cursor: pointer; border-bottom: 1px solid #222; color: #ccc;"
+                     onmouseover="this.style.background='#2a2a2a'" onmouseout="this.style.background=''"
+                     onclick="addTestWrestler(${w.id}, '${w.name.replace(/'/g, "\\'")}')">
+                    ${w.name} <span style="color: #666; font-size: 0.8rem;">(${w.promotion || 'Unknown'})</span>
+                </div>
+            `).join('');
+        }
+
+        function addTestWrestler(id, name) {
+            if (!testWrestlerIds.includes(id)) {
+                testWrestlerIds.push(id);
+                testWrestlerNames[id] = name;
+                renderTestTags();
+            }
+            document.getElementById('testWrestlerSearch').value = '';
+            document.getElementById('testSearchResults').style.display = 'none';
+        }
+
+        function addFromSearch() {
+            const query = document.getElementById('testWrestlerSearch').value.toLowerCase();
+            const w = wrestlers.find(w => w.name.toLowerCase() === query);
+            if (w) addTestWrestler(w.id, w.name);
+        }
+
+        async function testClear() {
+            if (!confirm('⚠️ This will DELETE all matches, participants, ELO history, and momentum history. Are you sure?')) return;
+            if (!confirm('Really sure? This cannot be undone.')) return;
+            addLog('Clearing all match data...', 'info');
+            try {
+                const data = await api('POST', '/api/scraper/test-clear', true);
+                addLog(data.message, 'success');
+                loadMatchCount();
+            } catch(e) {}
+        }
+
+        async function testScrape() {
+            if (testWrestlerIds.length === 0) { addLog('No wrestlers selected for test scrape', 'error'); return; }
+            addLog(`Starting test scrape for ${testWrestlerIds.length} wrestlers...`, 'info');
+            try {
+                const headers = { 'Content-Type': 'application/json', 'X-API-Key': getKey() };
+                const resp = await fetch('/api/scraper/test-scrape', { method: 'POST', headers, credentials: 'include', body: JSON.stringify({ wrestler_ids: testWrestlerIds }) });
+                const data = await resp.json();
+                addLog(data.message, 'success');
+                document.getElementById('scrapeResultsSection').style.display = 'block';
+                pollScrapeResults();
+            } catch(e) { addLog('Test scrape failed: ' + e.message, 'error'); }
+        }
+
+        async function testValidate() {
+            if (testWrestlerIds.length === 0) { addLog('No wrestlers selected', 'error'); return; }
+            addLog(`Starting validation for ${testWrestlerIds.length} wrestlers...`, 'info');
+            try {
+                const headers = { 'Content-Type': 'application/json', 'X-API-Key': getKey() };
+                const resp = await fetch('/api/scraper/test-validate', { method: 'POST', headers, credentials: 'include', body: JSON.stringify({ wrestler_ids: testWrestlerIds }) });
+                const data = await resp.json();
+                addLog(data.message, 'success');
+                document.getElementById('testResultsSection').style.display = 'block';
+                pollValidateResults();
+            } catch(e) { addLog('Validation failed: ' + e.message, 'error'); }
+        }
+
+        let scrapePoller = null;
+        function pollScrapeResults() {
+            if (scrapePoller) clearInterval(scrapePoller);
+            scrapePoller = setInterval(async () => {
+                try {
+                    const data = await api('GET', '/api/scraper/test-scrape/results', true);
+                    const tbody = document.getElementById('scrapeResultsBody');
+                    if (data.results && data.results.length > 0) {
+                        tbody.innerHTML = data.results.map(r => `
+                            <tr style="border-bottom: 1px solid #222;">
+                                <td style="padding: 6px 8px;">${r.name || 'Error'}</td>
+                                <td style="padding: 6px 8px; text-align: right;">${r.scraped_from_cm ?? '-'}</td>
+                                <td style="padding: 6px 8px; text-align: right; color: #4caf50;">${r.new_stored ?? '-'}</td>
+                                <td style="padding: 6px 8px; text-align: right;">${r.total_in_db ?? '-'}</td>
+                            </tr>
+                        `).join('');
+                        if (data.results.length >= testWrestlerIds.length) {
+                            clearInterval(scrapePoller);
+                            addLog('Test scrape complete!', 'success');
+                            loadMatchCount();
+                        }
+                    }
+                } catch(e) {}
+            }, 3000);
+        }
+
+        let validatePoller = null;
+        function pollValidateResults() {
+            if (validatePoller) clearInterval(validatePoller);
+            validatePoller = setInterval(async () => {
+                try {
+                    const data = await api('GET', '/api/scraper/test-validate/results', true);
+                    const tbody = document.getElementById('testResultsBody');
+                    if (data.results && data.results.length > 0) {
+                        tbody.innerHTML = data.results.map(r => {
+                            const diffColor = r.diff_cm_vs_db > 0 ? '#f44336' : '#4caf50';
+                            return `
+                                <tr style="border-bottom: 1px solid #222;">
+                                    <td style="padding: 6px 8px;">${r.name}</td>
+                                    <td style="padding: 6px 8px; text-align: right;">${r.cm_match_count}</td>
+                                    <td style="padding: 6px 8px; text-align: right;">${r.db_match_count}</td>
+                                    <td style="padding: 6px 8px; text-align: right; color: #666;">${r.promo_hist_sum}</td>
+                                    <td style="padding: 6px 8px; text-align: right; color: ${diffColor};">${r.diff_cm_vs_db}</td>
+                                    <td style="padding: 6px 8px; text-align: right;">${r.match_rate}</td>
+                                </tr>
+                            `;
+                        }).join('');
+                        if (data.results.length >= testWrestlerIds.length) {
+                            clearInterval(validatePoller);
+                            addLog('Test validation complete!', 'success');
+                        }
+                    }
+                } catch(e) {}
+            }, 3000);
+        }
+
+        // --- User Management ---
+        let currentUserId = null;
+
+        async function apiBody(method, path, body) {
+            const headers = { 'Content-Type': 'application/json' };
+            const key = getKey();
+            if (key) headers['X-API-Key'] = key;
+            const resp = await fetch(`${API}${path}`, { method, headers, credentials: 'include', body: JSON.stringify(body) });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || resp.statusText);
+            return data;
+        }
+
+        function roleBadge(role) {
+            const colors = { admin: '#e91e63', moderator: '#2196f3', user: '#555' };
+            const bg = colors[role] || '#555';
+            return `<span class="badge" style="background:${bg};color:white;">${role}</span>`;
+        }
+
+        function showAddUserForm() {
+            document.getElementById('addUserForm').style.display = 'block';
+            document.getElementById('newUsername').value = '';
+            document.getElementById('newDisplayName').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('newRole').value = 'user';
+        }
+
+        async function createUser() {
+            const username = document.getElementById('newUsername').value.trim();
+            const password = document.getElementById('newPassword').value;
+            const display_name = document.getElementById('newDisplayName').value.trim();
+            const role = document.getElementById('newRole').value;
+            if (!username || !password) { addLog('Username and password required', 'error'); return; }
+            try {
+                await apiBody('POST', '/api/admin/users', { username, password, display_name: display_name || username, role });
+                addLog(`User "${username}" created`, 'success');
+                document.getElementById('addUserForm').style.display = 'none';
+                loadUsers();
+            } catch(e) { addLog('Create user failed: ' + e.message, 'error'); }
+        }
+
+        async function loadUsers() {
+            try {
+                const me = await api('GET', '/api/auth/me');
+                currentUserId = me.user_id;
+                const users = await api('GET', '/api/admin/users');
+                const tbody = document.getElementById('usersBody');
+                if (!users || users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;text-align:center;color:#555;">No users found</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = users.map(u => {
+                    const isSelf = u.id === currentUserId;
+                    const lastLogin = u.last_login_at ? new Date(u.last_login_at).toLocaleString() : 'Never';
+                    return `<tr style="border-bottom:1px solid #222;" id="user-row-${u.id}">
+                        <td style="padding:6px 8px;">${u.username}</td>
+                        <td style="padding:6px 8px;" id="user-dn-${u.id}">${u.display_name || ''}</td>
+                        <td style="padding:6px 8px;" id="user-role-${u.id}">${roleBadge(u.role)}</td>
+                        <td style="padding:6px 8px;color:#888;">${lastLogin}</td>
+                        <td style="padding:6px 8px;text-align:right;">
+                            <button class="btn btn-blue" style="padding:4px 8px;font-size:0.75rem;" onclick="editUser(${u.id},'${u.display_name?.replace(/'/g,"\\'")||''}','${u.role}')">Edit</button>
+                            <button class="btn btn-orange" style="padding:4px 8px;font-size:0.75rem;" onclick="resetPassword(${u.id},'${u.username}')">Reset PW</button>
+                            ${isSelf ? '' : `<button class="btn btn-red" style="padding:4px 8px;font-size:0.75rem;" onclick="deleteUser(${u.id},'${u.username}')">Delete</button>`}
+                        </td>
+                    </tr>`;
+                }).join('');
+            } catch(e) { addLog('Failed to load users: ' + e.message, 'error'); }
+        }
+
+        function editUser(id, displayName, role) {
+            const isSelf = id === currentUserId;
+            const row = document.getElementById(`user-row-${id}`);
+            const cells = row.querySelectorAll('td');
+            cells[1].innerHTML = `<input type="text" value="${displayName}" id="edit-dn-${id}" style="background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:4px 8px;border-radius:4px;width:120px;" />`;
+            if (isSelf) {
+                cells[2].innerHTML = roleBadge(role) + ' <span style="font-size:0.7rem;color:#666;">(you)</span>';
+            } else {
+                cells[2].innerHTML = `<select id="edit-role-${id}" style="background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:4px 8px;border-radius:4px;">
+                    <option value="user" ${role==='user'?'selected':''}>user</option>
+                    <option value="moderator" ${role==='moderator'?'selected':''}>moderator</option>
+                    <option value="admin" ${role==='admin'?'selected':''}>admin</option>
+                </select>`;
+            }
+            cells[4].innerHTML = `
+                <button class="btn btn-green" style="padding:4px 8px;font-size:0.75rem;" onclick="saveUser(${id},${isSelf})">Save</button>
+                <button class="btn" style="padding:4px 8px;font-size:0.75rem;background:#333;color:#ccc;" onclick="loadUsers()">Cancel</button>`;
+        }
+
+        async function saveUser(id, isSelf) {
+            const dn = document.getElementById(`edit-dn-${id}`).value.trim();
+            const body = { display_name: dn };
+            if (!isSelf) {
+                const roleEl = document.getElementById(`edit-role-${id}`);
+                if (roleEl) body.role = roleEl.value;
+            }
+            try {
+                await apiBody('PUT', `/api/admin/users/${id}`, body);
+                addLog('User updated', 'success');
+                loadUsers();
+            } catch(e) { addLog('Update failed: ' + e.message, 'error'); }
+        }
+
+        async function resetPassword(id, username) {
+            const pw = prompt(`Enter new password for "${username}":`);
+            if (!pw) return;
+            try {
+                await apiBody('POST', `/api/admin/users/${id}/reset-password`, { password: pw });
+                addLog(`Password reset for "${username}"`, 'success');
+            } catch(e) { addLog('Reset failed: ' + e.message, 'error'); }
+        }
+
+        async function deleteUser(id, username) {
+            if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                const key = getKey();
+                if (key) headers['X-API-Key'] = key;
+                const resp = await fetch(`${API}/api/admin/users/${id}`, { method: 'DELETE', headers, credentials: 'include' });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || resp.statusText);
+                addLog(`User "${username}" deleted`, 'success');
+                loadUsers();
+            } catch(e) { addLog('Delete failed: ' + e.message, 'error'); }
+        }
+
+        // --- Init ---
+        async function loadDelay() {
+            try {
+                const resp = await fetch('/api/admin/settings/scrape-delay', { credentials: 'include' });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    document.getElementById('currentDelay').textContent = data.seconds;
+                }
+            } catch(e) {}
+        }
+
+        async function updateDelay() {
+            const secs = parseInt(document.getElementById('delayInput').value);
+            if (isNaN(secs) || secs < 0) { addLog('Invalid delay value', 'error'); return; }
+            try {
+                const resp = await fetch('/api/admin/settings/scrape-delay', {
+                    method: 'PUT', credentials: 'include',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({seconds: secs})
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    addLog(`Crawl delay updated to ${secs}s`, 'success');
+                    document.getElementById('currentDelay').textContent = secs;
+                    document.getElementById('delayInput').value = '';
+                } else {
+                    addLog(data.error || 'Failed to update delay', 'error');
+                }
+            } catch(e) { addLog('Error updating delay: ' + e.message, 'error'); }
+        }
+
+        async function init() {
+            // Check session auth
+            try {
+                const authResp = await fetch('/api/auth/me', { credentials: 'include' });
+                if (authResp.ok) {
+                    const authData = await authResp.json();
+                    if (authData.role !== 'admin') {
+                        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#f44336;font-size:1.5rem">Access Denied — Redirecting...</div>';
+                        setTimeout(() => window.location.href = '/', 3000);
+                        return;
+                    }
+                    document.getElementById('authStatus').textContent = '✓ ' + authData.username;
+                }
+            } catch(e) {}
+
+            // Load API key from localStorage
+            const saved = localStorage.getItem('joshi_api_key');
+            if (saved) document.getElementById('apiKey').value = saved;
+
+            // Save key on change
+            document.getElementById('apiKey').addEventListener('change', (e) => {
+                localStorage.setItem('joshi_api_key', e.target.value);
+            });
+
+            await loadUsers();
+            await loadTitles();
+            await loadWrestlers();
+            initTestWrestlers();
+            await loadMatchCount();
+            await loadSkippedCount();
+            await refreshStatus();
+            await loadDelay();
+
+            // Auto-refresh every 10 seconds
+            setInterval(async () => {
+                await refreshStatus();
+                await loadTitles();
+                await loadWrestlers();
+                await loadMatchCount();
+                await loadSkippedCount();
+            }, 10000);
+        }
+
+        init();
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

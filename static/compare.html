@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compare Wrestlers | Joshitori</title>
+    <meta name="description" content="Compare joshi wrestlers head-to-head with ELO history charts, win rates, and detailed matchup statistics.">
+    <link rel="canonical" href="https://joshitori.com/compare">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Compare Wrestlers | Joshitori">
+    <meta property="og:description" content="Compare joshi wrestlers head-to-head with ELO history charts, win rates, and detailed matchup statistics.">
+    <meta property="og:url" content="https://joshitori.com/compare">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Compare Wrestlers | Joshitori">
+    <meta name="twitter:description" content="Compare joshi wrestlers head-to-head with ELO history charts, win rates, and detailed matchup statistics.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2/dist/chartjs-plugin-zoom.min.js"></script>
+    <style>
+        .compare-search {
+            position: relative;
+        }
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0 0 6px 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 10;
+            display: none;
+        }
+        .search-results.active { display: block; }
+        .search-item {
+            padding: 8px 14px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .search-item:hover { background: var(--bg-hover); }
+        .search-item .promo { color: var(--text-muted); font-size: 0.8rem; }
+        .selected-wrestlers {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 16px 0;
+        }
+        .selected-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: var(--accent-glow);
+            border: 1px solid var(--accent);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .selected-tag .remove {
+            cursor: pointer;
+            opacity: 0.7;
+            font-size: 1rem;
+        }
+        .selected-tag .remove:hover { opacity: 1; }
+        .chart-container { height: 400px; }
+        .compare-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 24px;
+        }
+        .compare-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+        }
+        .compare-card h4 {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+        .compare-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 0.85rem;
+        }
+        .color-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+    </style>
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+<div class="container">
+        <div class="page-header">
+            <h1>⚖️ Compare Wrestlers</h1>
+            <p>Overlay ELO histories and compare stats side-by-side</p>
+        </div>
+
+        <div class="compare-search">
+            <input type="text" id="addWrestler" placeholder="Type to add a wrestler..."
+                style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 14px; border-radius: 6px; font-family: inherit; font-size: 0.9rem;"
+                oninput="searchWrestler(this.value)"
+                onfocus="searchWrestler(this.value)">
+            <div class="search-results" id="searchResults"></div>
+        </div>
+
+        <div class="selected-wrestlers" id="selectedWrestlers"></div>
+
+        <div class="card" style="margin-top: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="color: var(--accent);">ELO Over Time</h3>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-accent" id="btnTimeline" onclick="setChartMode('timeline')">📅 Timeline</button>
+                    <button class="btn btn-ghost" id="btnCareer" onclick="setChartMode('career')">🏋️ Career</button>
+                    <span style="border-left: 1px solid rgba(255,255,255,0.1); margin: 0 4px;"></span>
+                    <button class="btn btn-ghost cmp-range-btn" onclick="setCmpRange('1y')">1Y</button>
+                    <button class="btn btn-ghost cmp-range-btn" onclick="setCmpRange('2y')">2Y</button>
+                    <button class="btn btn-ghost cmp-range-btn" onclick="setCmpRange('5y')">5Y</button>
+                    <button class="btn btn-accent cmp-range-btn active" onclick="setCmpRange('max')">MAX</button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="compareChart"></canvas>
+            </div>
+        </div>
+
+        <div class="compare-stats" id="compareStats"></div>
+    </div>
+
+    <script>
+        const chartColors = ['#e91e63', '#2196f3', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#ff5722', '#8bc34a'];
+        let allWrestlers = [];
+        let selected = [];
+        let compareChart = null;
+
+        async function init() {
+            allWrestlers = await fetch('/api/wrestlers').then(r => r.json());
+
+            // Check URL params for pre-selected wrestlers
+            const params = new URLSearchParams(window.location.search);
+            const ids = params.get('ids');
+            if (ids) {
+                ids.split(',').forEach(id => {
+                    const w = allWrestlers.find(w => w.id === parseInt(id));
+                    if (w) addWrestler(w);
+                });
+            }
+
+            // Close search on click outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.compare-search')) {
+                    document.getElementById('searchResults').classList.remove('active');
+                }
+            });
+
+            initChart();
+        }
+
+        function searchWrestler(query) {
+            const results = document.getElementById('searchResults');
+            if (!query || query.length < 2) {
+                results.classList.remove('active');
+                return;
+            }
+
+            const q = query.toLowerCase();
+            const matches = allWrestlers
+                .filter(w => w.name.toLowerCase().includes(q) && !selected.find(s => s.id === w.id))
+                .sort((a, b) => {
+                    // Prioritize: exact match > starts with > contains
+                    const aName = a.name.toLowerCase();
+                    const bName = b.name.toLowerCase();
+                    const aExact = aName === q ? 0 : aName.startsWith(q) ? 1 : 2;
+                    const bExact = bName === q ? 0 : bName.startsWith(q) ? 1 : 2;
+                    if (aExact !== bExact) return aExact - bExact;
+                    return aName.length - bName.length; // shorter names first
+                })
+                .slice(0, 10);
+
+            if (matches.length === 0) {
+                results.classList.remove('active');
+                return;
+            }
+
+            results.innerHTML = matches.map(w => `
+                <div class="search-item" onclick="addWrestler(${JSON.stringify(w).replace(/"/g, '&quot;')})">
+                    <div>${w.name}</div>
+                    <div class="promo">${w.promotion || 'Freelance'} · ELO: ${Math.round(w.elo)}</div>
+                </div>
+            `).join('');
+            results.classList.add('active');
+        }
+
+        function addWrestler(w) {
+            if (selected.length >= 8) return;
+            if (selected.find(s => s.id === w.id)) return;
+
+            selected.push(w);
+            document.getElementById('addWrestler').value = '';
+            document.getElementById('searchResults').classList.remove('active');
+            renderSelected();
+            renderCompareStats();
+            updateURL();
+        }
+
+        function removeWrestler(id) {
+            selected = selected.filter(w => w.id !== id);
+            renderSelected();
+            renderCompareStats();
+            updateURL();
+        }
+
+        function updateURL() {
+            const ids = selected.map(w => w.id).join(',');
+            const url = ids ? `?ids=${ids}` : window.location.pathname;
+            history.replaceState(null, '', url);
+        }
+
+        function renderSelected() {
+            const el = document.getElementById('selectedWrestlers');
+            el.innerHTML = selected.map((w, i) => `
+                <span class="selected-tag">
+                    <span class="color-dot" style="background: ${chartColors[i]}"></span>
+                    ${w.name} (${Math.round(w.elo)})
+                    <span class="remove" onclick="removeWrestler(${w.id})">✕</span>
+                </span>
+            `).join('');
+            updateChart();
+        }
+
+        let chartMode = 'timeline'; // 'timeline' or 'career'
+        let cmpRange = 'max';
+
+        function setCmpRange(range) {
+            cmpRange = range;
+            renderChart();
+            document.querySelectorAll('.cmp-range-btn').forEach(b => {
+                b.classList.remove('btn-accent', 'active');
+                b.classList.add('btn-ghost');
+            });
+            event.target.classList.remove('btn-ghost');
+            event.target.classList.add('btn-accent', 'active');
+        }
+
+        function filterByRange(history) {
+            if (cmpRange === 'max') return history;
+            const years = parseInt(cmpRange);
+            const cutoff = new Date();
+            cutoff.setFullYear(cutoff.getFullYear() - years);
+            const cutoffStr = cutoff.toISOString().slice(0, 10);
+            return history.filter(h => h.match_date >= cutoffStr);
+        }
+        let cachedHistoryMap = null;
+
+        function momentumDisplay(momentum) {
+            const val = Math.abs(momentum).toFixed(1);
+            if (momentum > 0) return `▲ ${val}`;
+            if (momentum < 0) return `▼ ${val}`;
+            return `- ${val}`;
+        }
+
+        function momentumColor(momentum) {
+            if (momentum > 0) return '#4ade80';
+            if (momentum < 0) return 'var(--red)';
+            return 'var(--text-muted)';
+        }
+
+        function setChartMode(mode) {
+            chartMode = mode;
+            document.getElementById('btnTimeline').className = mode === 'timeline' ? 'btn btn-accent' : 'btn btn-ghost';
+            document.getElementById('btnCareer').className = mode === 'career' ? 'btn btn-accent' : 'btn btn-ghost';
+            renderChart();
+        }
+
+        async function updateChart() {
+            if (!compareChart || selected.length === 0) {
+                compareChart.data.labels = [];
+                compareChart.data.datasets = [];
+                compareChart.update();
+                cachedHistoryMap = null;
+                return;
+            }
+
+            const ids = selected.map(w => w.id).join(',');
+            cachedHistoryMap = await fetch(`/api/elo-history?ids=${ids}`).then(r => r.json());
+            renderChart();
+        }
+
+        function renderChart() {
+            if (!compareChart || !cachedHistoryMap || selected.length === 0) return;
+
+            if (chartMode === 'timeline') {
+                renderTimelineChart();
+            } else {
+                renderCareerChart();
+            }
+        }
+
+        let cachedSampledMap = {}; // wrestler_id -> sampled enriched array (for tooltips)
+
+        function renderTimelineChart() {
+            // Time-aligned: X axis is real dates, wrestlers overlap at correct points in time
+            cachedSampledMap = {};
+            const datasets = selected.map((w, i) => {
+                const history = filterByRange(cachedHistoryMap[w.id] || []);
+                let data = sampleData(history, 500);
+                cachedSampledMap[w.id] = data;
+                return {
+                    label: w.name,
+                    data: data.map(h => ({ x: h.match_date, y: Math.round(h.elo) })),
+                    borderColor: chartColors[i],
+                    backgroundColor: 'transparent',
+                    tension: 0.2,
+                    pointRadius: 0,
+                    pointHitRadius: 5,
+                    borderWidth: 2,
+                };
+            });
+
+            compareChart.data.labels = [];
+            compareChart.data.datasets = datasets;
+            compareChart.options.spanGaps = true;
+            compareChart.options.scales.x = {
+                type: 'time',
+                display: true,
+                grid: { color: 'rgba(255,255,255,0.05)' },
+                ticks: { color: '#55556a', maxTicksLimit: 12 },
+                time: { unit: 'year', displayFormats: { year: 'yyyy' } },
+            };
+            compareChart.resetZoom();
+            compareChart.update();
+        }
+
+        function renderCareerChart() {
+            // Career-aligned: X axis is match number (career progression)
+            let maxLen = 0;
+            cachedSampledMap = {};
+            const datasets = selected.map((w, i) => {
+                const history = filterByRange(cachedHistoryMap[w.id] || []);
+                let data = sampleData(history, 500);
+                cachedSampledMap[w.id] = data;
+                if (data.length > maxLen) maxLen = data.length;
+                return {
+                    label: w.name,
+                    data: data.map(h => Math.round(h.elo)),
+                    borderColor: chartColors[i],
+                    backgroundColor: 'transparent',
+                    tension: 0.2,
+                    pointRadius: 0,
+                    pointHitRadius: 5,
+                    borderWidth: 2,
+                };
+            });
+
+            // Pad shorter datasets with null at end so all start together from the left
+            datasets.forEach(ds => {
+                while (ds.data.length < maxLen) {
+                    ds.data.push(null);
+                }
+            });
+
+            compareChart.data.labels = Array.from({ length: maxLen }, (_, i) => '');
+            compareChart.data.datasets = datasets;
+            compareChart.options.spanGaps = true;
+            compareChart.options.scales.x = {
+                display: false,
+            };
+            compareChart.update();
+        }
+
+        function sampleData(data, maxPoints = 800) {
+            if (data.length <= maxPoints) return data;
+            const step = Math.ceil(data.length / maxPoints);
+            return data.filter((_, i) => i % step === 0 || i === data.length - 1);
+        }
+
+        function renderCompareStats() {
+            const el = document.getElementById('compareStats');
+            if (selected.length === 0) {
+                el.innerHTML = '';
+                return;
+            }
+
+            const sorted = [...allWrestlers].sort((a, b) => b.elo - a.elo);
+
+            const stats = selected.map((w, i) => {
+                const totalMatches = w.match_count || (w.wins + w.losses + w.draws);
+                const winPct = totalMatches > 0 ? Math.round((w.wins / totalMatches) * 100) : 0;
+                const rank = sorted.findIndex(s => s.id === w.id) + 1;
+                return { ...w, totalMatches, winPct, rank, color: chartColors[i] };
+            });
+
+            el.innerHTML = `
+                <div class="compare-card">
+                    <h4>ELO Rating</h4>
+                    ${stats.sort((a,b) => b.elo - a.elo).map(s => `
+                        <div class="compare-row">
+                            <span><span class="color-dot" style="background: ${s.color}"></span>${s.name}</span>
+                            <span class="elo ${s.elo >= 1400 ? 'elo-high' : s.elo >= 1200 ? 'elo-mid' : 'elo-low'}">${Math.round(s.elo)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="compare-card">
+                    <h4>Rank</h4>
+                    ${stats.sort((a,b) => a.rank - b.rank).map(s => `
+                        <div class="compare-row">
+                            <span><span class="color-dot" style="background: ${s.color}"></span>${s.name}</span>
+                            <span>#${s.rank}</span>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="compare-card">
+                    <h4>Win Rate</h4>
+                    ${stats.sort((a,b) => b.winPct - a.winPct).map(s => `
+                        <div class="compare-row">
+                            <span><span class="color-dot" style="background: ${s.color}"></span>${s.name}</span>
+                            <span>${s.winPct}%</span>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="compare-card">
+                    <h4>Momentum</h4>
+                    ${stats.sort((a,b) => (b.momentum || 0) - (a.momentum || 0)).map(s => `
+                        <div class="compare-row">
+                            <span><span class="color-dot" style="background: ${s.color}"></span>${s.name}</span>
+                            <span style="color: ${momentumColor(s.momentum || 0)};">${momentumDisplay(s.momentum || 0)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="compare-card">
+                    <h4>Total Matches</h4>
+                    ${stats.sort((a,b) => b.totalMatches - a.totalMatches).map(s => `
+                        <div class="compare-row">
+                            <span><span class="color-dot" style="background: ${s.color}"></span>${s.name}</span>
+                            <span>${s.totalMatches.toLocaleString()}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('compareChart');
+            compareChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#8888a0', font: { family: 'Inter' } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => {
+                                    const w = selected[ctx.datasetIndex];
+                                    if (!w) return ctx.dataset.label + ': ' + ctx.parsed.y;
+                                    const sampled = cachedSampledMap[w.id];
+                                    // In career mode, data is padded with nulls at start
+                                    let point = null;
+                                    if (sampled) {
+                                        if (chartMode === 'career') {
+                                            if (ctx.dataIndex >= 0 && ctx.dataIndex < sampled.length) point = sampled[ctx.dataIndex];
+                                        } else {
+                                            point = sampled[ctx.dataIndex];
+                                        }
+                                    }
+                                    const lines = [w.name + ': ' + ctx.parsed.y];
+                                    if (point) {
+                                        if (point.event_name) lines.push('  ' + point.event_name);
+                                        if (point.opponents) lines.push('  vs ' + point.opponents);
+                                        if (point.result) {
+                                            const rt = point.result === 'W' ? 'Win' : point.result === 'L' ? 'Loss' : 'Draw';
+                                            lines.push('  Result: ' + rt);
+                                        }
+                                        if (point.elo_change) {
+                                            const sign = point.elo_change > 0 ? '+' : '';
+                                            lines.push('  Change: ' + sign + point.elo_change.toFixed(1));
+                                        }
+                                    }
+                                    return lines;
+                                }
+                            }
+                        },
+                        zoom: {
+                            zoom: {
+                                wheel: { enabled: true },
+                                pinch: { enabled: true },
+                                mode: 'x',
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                            },
+                        },
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#55556a' },
+                        },
+                        y: {
+                            display: true,
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#55556a' },
+                        }
+                    }
+                }
+            });
+        }
+
+        init();
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

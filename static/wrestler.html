@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wrestler Profile | Joshitori</title>
+    <meta name="description" content="View wrestler ELO rating, match history, title reigns, and career statistics on Joshitori.">
+    <link rel="canonical" href="https://joshitori.com/wrestler">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Wrestler Profile | Joshitori">
+    <meta property="og:description" content="View wrestler ELO rating, match history, title reigns, and career statistics on Joshitori.">
+    <meta property="og:url" content="https://joshitori.com/wrestler">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Wrestler Profile | Joshitori">
+    <meta name="twitter:description" content="View wrestler ELO rating, match history, title reigns, and career statistics on Joshitori.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2/dist/chartjs-plugin-zoom.min.js"></script>
+    <style>
+        .compare-btn { display: inline-flex; align-items: center; gap: 6px; }
+    </style>
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+<div class="container">
+        <a href="/" class="back-link">← Back to Rankings</a>
+        <div id="content">
+            <div class="loading">Loading wrestler...</div>
+        </div>
+    </div>
+
+    <script>
+        let eloChart = null;
+        let eloFullData = []; // unsampled for range filtering
+        let allMatches = [];
+        let currentWrestlerID = null;
+
+        function getWrestlerID() {
+            const parts = window.location.pathname.split('/');
+            return parseInt(parts[parts.length - 1]);
+        }
+
+        function eloClass(elo) {
+            if (elo >= 5000) return 'elo-high';
+            if (elo >= 2000) return 'elo-mid';
+            return 'elo-low';
+        }
+
+        function tierClass(tier) {
+            return 'tier-' + tier.toLowerCase().replace(/\s+/g, '-').replace(/\d+/g, '').replace(/-$/, '');
+        }
+
+        let tierDefs = [];
+        async function loadTiers() {
+            try { tierDefs = await (await fetch('/api/tiers')).json(); } catch(e) {}
+        }
+        function getTier(rank, total) {
+            if (total === 0) return { tier: 'Seedling', icon: '🌱' };
+            const pct = (rank / total) * 100;
+            for (const t of tierDefs) { if (pct <= t.max_pct) return { tier: t.name, icon: t.icon }; }
+            return { tier: 'Seedling', icon: '🌱' };
+        }
+
+        async function loadWrestler() {
+            await loadTiers();
+            const id = getWrestlerID();
+            currentWrestlerID = id;
+
+            // Ghost wrestler page — untracked participants (male/unlinked wrestlers)
+            if (id === 0) {
+                const params = new URLSearchParams(window.location.search);
+                const ghostName = params.get('name');
+                const ghostCMID = params.get('cmid');
+                const displayName = ghostName || '???';
+                const title = ghostName ? `${ghostName} (Ghost)` : 'Ghost Wrestler';
+                document.title = `${title} — Joshitori`;
+
+                // Prevent ghost wrestler pages from being indexed
+                const noindex = document.createElement('meta');
+                noindex.name = 'robots';
+                noindex.content = 'noindex, nofollow';
+                document.head.appendChild(noindex);
+
+                const cmLink = ghostCMID
+                    ? `<a href="https://www.cagematch.net/?id=2&nr=${ghostCMID}" target="_blank" rel="noopener" 
+                         style="display: inline-flex; align-items: center; gap: 6px; margin-top: 16px; padding: 8px 16px; 
+                                background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; 
+                                color: var(--text-secondary); font-size: 0.85rem; transition: all 0.2s;">
+                         🔗 View on Cagematch
+                       </a>`
+                    : '';
+
+                document.getElementById('content').innerHTML = `
+                    <div style="text-align:center; padding: 60px 20px;">
+                        <div style="font-size: 6rem; margin-bottom: 16px; filter: drop-shadow(0 0 20px rgba(200,180,255,0.3));">👻</div>
+                        <h1 style="font-size: 2.2rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 8px;">
+                            ${displayName}
+                        </h1>
+                        <p style="color: var(--text-secondary); font-size: 1.05rem; max-width: 440px; margin: 0 auto 24px; line-height: 1.6;">
+                            ${ghostName 
+                                ? `We don't track <strong>${ghostName}</strong> individually - they're a ghost in our system.`
+                                : `This is a placeholder for wrestlers we don't track individually - usually male opponents, unlinked names from old matches, or mystery entrants.`
+                            }
+                        </p>
+                        <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 360px; margin: 0 auto 24px; text-align: left;">
+                            <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border);">
+                                <span style="color: var(--text-muted); font-size: 0.85rem;">Name</span>
+                                <span style="font-size: 0.85rem; font-weight: 500;">${displayName}</span>
+                            </div>
+                            ${ghostCMID ? `
+                            <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border);">
+                                <span style="color: var(--text-muted); font-size: 0.85rem;">Cagematch ID</span>
+                                <a href="https://www.cagematch.net/?id=2&nr=${ghostCMID}" target="_blank" rel="noopener" 
+                                   style="font-size: 0.85rem; font-weight: 500; color: var(--accent);">#${ghostCMID} ↗</a>
+                            </div>` : ''}
+                            <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border);">
+                                <span style="color: var(--text-muted); font-size: 0.85rem;">ELO</span>
+                                <span style="font-size: 0.85rem; font-weight: 500;">Unranked</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border);">
+                                <span style="color: var(--text-muted); font-size: 0.85rem;">Promotion</span>
+                                <span style="font-size: 0.85rem; font-weight: 500;">The Shadow Realm</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 6px 0;">
+                                <span style="color: var(--text-muted); font-size: 0.85rem;">Status</span>
+                                <span style="font-size: 0.85rem; font-weight: 500;">👻 Spooky</span>
+                            </div>
+                        </div>
+                        ${cmLink}
+                        <p style="color: var(--text-muted); font-size: 0.8rem; font-style: italic; margin-top: 20px;">
+                            Their matches count for the tracked wrestlers' records, but ghosts don't get ELO.
+                            <br>They're here in spirit only~ ✨
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            try {
+                const [wrestler, allWrestlers, matchesResp] = await Promise.all([
+                    fetch(`/api/wrestlers/${id}`).then(r => r.json()),
+                    fetch('/api/wrestler-slim').then(r => r.json()),
+                    fetch(`/api/matches?wrestler_id=${id}`).then(r => r.json()),
+                ]);
+
+                allMatches = matchesResp || [];
+
+                const sorted = [...allWrestlers].sort((a, b) => b.elo - a.elo);
+                const rank = sorted.findIndex(w => w.id === wrestler.id) + 1;
+                const { tier, icon } = getTier(rank, sorted.length);
+                const totalMatches = wrestler.wins + wrestler.losses + wrestler.draws;
+                const winPct = totalMatches > 0 ? Math.round((wrestler.wins / totalMatches) * 100) : 0;
+
+                document.title = `${wrestler.name} — Joshitori`;
+
+                const aliases = (wrestler.aliases || []).map(a => `<span class="alias-tag">${a.alias}</span>`).join('');
+                const socialIcons = {
+                    'twitter': '<svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>',
+                    'x': '<svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>',
+                    'instagram': '<svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>',
+                    'youtube': '<svg viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>',
+                    'tiktok': '<svg viewBox="0 0 24 24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>',
+                    'facebook': '<svg viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>',
+                    'line': '<svg viewBox="0 0 24 24"><path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.346 0 .627.285.627.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.282.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/></svg>',
+                    'website': '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>',
+                };
+                function getSocialIcon(name) {
+                    const lower = name.toLowerCase();
+                    for (const [key, svg] of Object.entries(socialIcons)) {
+                        if (lower.includes(key)) return svg;
+                    }
+                    return socialIcons.website;
+                }
+                const socials = (wrestler.socials || []).map(s => 
+                    `<a href="${s.url}" target="_blank" rel="noopener">${getSocialIcon(s.name)} ${s.name}</a>`
+                ).join('');
+                const moves = (wrestler.signature_moves || []).join(', ');
+
+                const imgSrc = wrestler.image || '';
+                const imgLocal = wrestler.image_local || '';
+                const pfpHtml = imgSrc 
+                    ? `<img src="${imgSrc}" onerror="this.onerror=null;this.src='${imgLocal}'" alt="${wrestler.name}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--border);margin-right:16px;">` 
+                    : (imgLocal ? `<img src="${imgLocal}" alt="${wrestler.name}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--border);margin-right:16px;">` : '');
+
+                document.getElementById('content').innerHTML = `
+                    <div class="profile-header">
+                        <div style="display:flex;align-items:center;">
+                            ${pfpHtml}
+                            <div>
+                                <div class="profile-name">${wrestler.name}</div>
+                                <div class="profile-promo">${wrestler.promotion || 'Freelance'} · Rank #${rank}</div>
+                                ${aliases ? `<div class="aliases">${aliases}</div>` : ''}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="profile-elo ${eloClass(wrestler.elo)}">${Math.round(wrestler.elo)}</div>
+                            <div class="profile-tier"><span class="tier-badge ${tierClass(tier)}">${icon} ${tier}</span></div>
+                        </div>
+                    </div>
+
+                    <div id="modActions" style="display:none;margin-bottom:20px;gap:8px;flex-wrap:wrap;">
+                        <button onclick="setWrestlerPfp(${wrestler.id})" class="btn btn-ghost" style="border:1px solid var(--border);padding:6px 14px;border-radius:6px;font-size:0.82rem;cursor:pointer;background:var(--bg-secondary);color:var(--text-secondary);">🖼️ Set Profile Picture</button>
+                        <button onclick="ghostWrestler(${wrestler.id}, '${wrestler.name.replace(/'/g, "\\'")}')" class="btn btn-ghost" style="border:1px solid #f44336;padding:6px 14px;border-radius:6px;font-size:0.82rem;cursor:pointer;background:var(--bg-secondary);color:#f44336;">👻 Ghost This Wrestler</button>
+                    </div>
+
+                    <div class="stats-grid" style="margin-bottom: 24px;">
+                        <div class="stat-card"><div class="value" style="color: var(--green);">${wrestler.wins}</div><div class="label">Wins</div></div>
+                        <div class="stat-card"><div class="value" style="color: var(--red);">${wrestler.losses}</div><div class="label">Losses</div></div>
+                        <div class="stat-card"><div class="value">${wrestler.draws}</div><div class="label">Draws</div></div>
+                        <div class="stat-card"><div class="value">${winPct}%</div><div class="label">Win Rate</div></div>
+                        <div class="stat-card"><div class="value">${totalMatches.toLocaleString()}</div><div class="label">Total Matches</div></div>
+                        <div class="stat-card"><div class="value" style="color: ${momentumColor(wrestler.momentum || 0)};">${momentumDisplay(wrestler.momentum || 0)}</div><div class="label">Momentum</div></div>
+                        <div class="stat-card"><div class="value">#${rank}</div><div class="label">Rank</div></div>
+                    </div>
+
+                    <div class="profile-grid">
+                        <div class="card">
+                            <h3 style="color: var(--accent); margin-bottom: 12px;">Profile</h3>
+                            <div class="info-row"><span class="info-label">Promotion</span><span class="info-value">${wrestler.promotion || 'Freelance'}</span></div>
+                            <div class="info-row"><span class="info-label">Birthday</span><span class="info-value">${wrestler.birthday && !wrestler.birthday.startsWith('0001') ? new Date(wrestler.birthday).toLocaleDateString() : '—'}</span></div>
+                            <div class="info-row"><span class="info-label">Birthplace</span><span class="info-value">${wrestler.birthplace || '—'}</span></div>
+                            <div class="info-row"><span class="info-label">Height</span><span class="info-value">${wrestler.height || '—'}</span></div>
+                            <div class="info-row"><span class="info-label">Weight</span><span class="info-value">${wrestler.weight || '—'}</span></div>
+                            <div class="info-row"><span class="info-label">Debut</span><span class="info-value">${wrestler.debut_year || '—'}</span></div>
+                            <div class="info-row"><span class="info-label">Style</span><span class="info-value">${wrestler.wrestling_style || '—'}</span></div>
+                            <div class="info-row"><span class="info-label">Cagematch ID</span><span class="info-value">${wrestler.cagematch_id ? `<a href="https://www.cagematch.net/?id=2&nr=${wrestler.cagematch_id}" target="_blank">${wrestler.cagematch_id}</a>` : '—'}</span></div>
+                            ${moves ? `<div class="info-row"><span class="info-label">Signature Moves</span><span class="info-value">${moves}</span></div>` : ''}
+                            ${socials ? `<div style="margin-top: 12px;" class="social-links">${socials}</div>` : ''}
+                        </div>
+                        <div class="card">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <h3 style="color: var(--accent);">ELO History</h3>
+                                <div style="display: flex; gap: 4px;">
+                                    <button class="btn btn-ghost elo-range-btn" onclick="setEloRange('1y')" style="font-size:0.75rem;padding:3px 8px;">1Y</button>
+                                    <button class="btn btn-ghost elo-range-btn" onclick="setEloRange('2y')" style="font-size:0.75rem;padding:3px 8px;">2Y</button>
+                                    <button class="btn btn-ghost elo-range-btn" onclick="setEloRange('5y')" style="font-size:0.75rem;padding:3px 8px;">5Y</button>
+                                    <button class="btn btn-accent elo-range-btn active" onclick="setEloRange('max')" style="font-size:0.75rem;padding:3px 8px;">MAX</button>
+                                </div>
+                            </div>
+                            <div class="chart-container"><canvas id="eloChart"></canvas></div>
+                        </div>
+                    </div>
+
+                    <!-- Streaks + Notable Opponents (loaded async) -->
+                    <div id="statsSection" style="display:none; margin-top:20px;">
+                        <div class="profile-grid">
+                            <div class="card" id="streaksCard"></div>
+                            <div class="card" id="singlesOpponentsCard"></div>
+                        </div>
+                        <div class="card" style="margin-top:20px;" id="allOpponentsCard"></div>
+                    </div>
+
+                    <div class="card" style="margin-top: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h3 style="color: var(--accent);">Match History<span class="match-count" id="matchCount">(${allMatches.length})</span></h3>
+                            <a href="/compare?ids=${wrestler.id}" class="btn btn-ghost compare-btn">📊 Compare</a>
+                        </div>
+                        <div class="match-filters">
+                            <select id="matchTypeFilter" onchange="filterMatches()">
+                                <option value="">All Types</option>
+                                <option value="singles">Singles</option>
+                                <option value="tag">Tag</option>
+                                <option value="multi">Multi-Person</option>
+                            </select>
+                            <select id="resultFilter" onchange="filterMatches()">
+                                <option value="">All Results</option>
+                                <option value="W">Wins</option>
+                                <option value="L">Losses</option>
+                                <option value="D">Draws</option>
+                            </select>
+                            <input type="text" id="participantSearch" placeholder="Filter by opponent/partner..." oninput="filterMatches()">
+                        </div>
+                        <div class="match-list" id="matchList"></div>
+                    </div>
+                `;
+
+                filterMatches();
+                buildEloChart();
+                loadWrestlerStats(id);
+
+            } catch (e) {
+                document.getElementById('content').innerHTML = '<div class="empty">Wrestler not found</div>';
+            }
+        }
+
+        function getMatchResult(m, wrestlerID) {
+            const p = m.participants.find(p => p.wrestler_id === wrestlerID);
+            if (!p) return { result: '?', cls: 'match-draw' };
+            if (m.is_draw) return { result: 'D', cls: 'match-draw' };
+            if (p.is_winner) return { result: 'W', cls: 'match-win' };
+            return { result: 'L', cls: 'match-loss' };
+        }
+
+        function getMatchCategory(m) {
+            const count = m.participants ? m.participants.length : 0;
+            if (count <= 2) return 'singles';
+            // Check if exactly 2 teams with 2 participants each = tag
+            const teams = new Set(m.participants.map(p => p.team));
+            if (teams.size === 2 && count <= 4) return 'tag';
+            return 'multi';
+        }
+
+        function momentumDisplay(momentum) {
+            const val = Math.abs(momentum).toFixed(1);
+            if (momentum > 0) return `▲ ${val}`;
+            if (momentum < 0) return `▼ ${val}`;
+            return `- ${val}`;
+        }
+
+        function momentumColor(momentum) {
+            if (momentum > 0) return '#4ade80';
+            if (momentum < 0) return 'var(--red)';
+            return 'var(--text-muted)';
+        }
+
+        function formatEloChange(change) {
+            if (change === 0) return '';
+            const prefix = change > 0 ? '+' : '';
+            const cls = change > 0 ? 'elo-gain' : 'elo-loss';
+            return `<span class="elo-change ${cls}">${prefix}${change.toFixed(1)}</span>`;
+        }
+
+        function filterMatches() {
+            const typeFilter = document.getElementById('matchTypeFilter')?.value || '';
+            const resultFilter = document.getElementById('resultFilter')?.value || '';
+            const partSearch = (document.getElementById('participantSearch')?.value || '').toLowerCase();
+            const wid = currentWrestlerID;
+
+            let filtered = allMatches.filter(m => {
+                // Type filter
+                if (typeFilter) {
+                    const cat = getMatchCategory(m);
+                    if (cat !== typeFilter) return false;
+                }
+                // Result filter
+                if (resultFilter) {
+                    const { result } = getMatchResult(m, wid);
+                    if (result !== resultFilter) return false;
+                }
+                // Participant name search
+                if (partSearch) {
+                    const others = m.participants.filter(p => p.wrestler_id !== wid);
+                    if (!others.some(p => (p.wrestler_name || '').toLowerCase().includes(partSearch))) return false;
+                }
+                return true;
+            });
+
+            const countEl = document.getElementById('matchCount');
+            if (countEl) countEl.textContent = `(${filtered.length} of ${allMatches.length})`;
+
+            const listEl = document.getElementById('matchList');
+            if (!listEl) return;
+
+            if (filtered.length === 0) {
+                listEl.innerHTML = '<div class="empty">No matches match your filters</div>';
+                return;
+            }
+
+            listEl.innerHTML = filtered.map(m => renderMatchRow(m, wid)).join('');
+        }
+
+        function renderMatchRow(m, wrestlerID) {
+            const { result, cls } = getMatchResult(m, wrestlerID);
+            const date = new Date(m.date).toLocaleDateString();
+
+            // Group participants by team
+            const teams = {};
+            (m.participants || []).forEach(p => {
+                const t = p.team || 0;
+                if (!teams[t]) teams[t] = [];
+                teams[t].push(p);
+            });
+
+            const teamKeys = Object.keys(teams).sort((a, b) => a - b);
+            const teamsHTML = teamKeys.map(tk => {
+                const members = teams[tk];
+                return '<span class="match-team">' + members.map(p => {
+                    const isSelf = p.wrestler_id === wrestlerID;
+                    let cls = m.is_draw ? 'draw-p' : (p.is_winner ? 'winner' : 'loser');
+                    const name = p.wrestler_name || p.ghost_name || `#${p.wrestler_id}`;
+                    if (isSelf) return `<strong class="${cls}">${name}</strong>`;
+                    // Ghost participants — link to ghost page with name & CMID as query params
+                    if (p.wrestler_id === 0) {
+                        const ghostParams = new URLSearchParams();
+                        if (p.ghost_name) ghostParams.set('name', p.ghost_name);
+                        if (p.ghost_cagematch_id) ghostParams.set('cmid', p.ghost_cagematch_id);
+                        const qs = ghostParams.toString();
+                        return `<a href="/wrestler/0${qs ? '?' + qs : ''}" class="${cls}" title="👻 Ghost Wrestler">${name}</a>`;
+                    }
+                    return `<a href="/wrestler/${p.wrestler_id}" class="${cls}">${name}</a>`;
+                }).join(', ') + '</span>';
+            }).join('<span class="match-vs"> vs </span>');
+
+            // Details line
+            const details = [];
+            if (m.finish_type) details.push(`<span class="match-detail"><strong>Finish:</strong> ${m.finish_type}</span>`);
+            if (m.match_time) details.push(`<span class="match-detail"><strong>Time:</strong> ${m.match_time}</span>`);
+
+            const titleBadge = m.is_title_match ? '<span class="match-title-badge">🏆 Title</span>' : '';
+            const typeBadge = m.match_type ? `<span class="match-type-badge">${m.match_type}</span>` : '';
+
+            // Get ELO change for this wrestler
+            const participant = m.participants?.find(p => p.wrestler_id === wrestlerID);
+            const eloChange = participant?.elo_change || 0;
+            const eloChangeDisplay = eloChange !== 0 ? formatEloChange(eloChange) : '';
+
+            return `
+                <div class="match-row">
+                    <div class="match-result-section">
+                        <span class="match-result ${cls}">${result}</span>
+                        ${eloChangeDisplay}
+                    </div>
+                    <div class="match-body">
+                        <div class="match-top">${typeBadge}${titleBadge}</div>
+                        <div class="match-meta">${m.event_name} · ${date}</div>
+                        <div class="match-participants">${teamsHTML}</div>
+                        ${details.length ? `<div class="match-details">${details.join('')}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        async function loadWrestlerStats(id) {
+            try {
+                const stats = await fetch(`/api/wrestlers/${id}/stats`).then(r => r.json());
+                const section = document.getElementById('statsSection');
+                section.style.display = 'block';
+
+                // Streaks card
+                document.getElementById('streaksCard').innerHTML = `
+                    <h3 style="color: var(--accent); margin-bottom: 12px;">📊 Streaks</h3>
+                    <div class="info-row"><span class="info-label">Longest Win Streak</span><span class="info-value" style="color:var(--green);font-weight:700;">${stats.longest_win_streak}</span></div>
+                    <div class="info-row"><span class="info-label">Longest Loss Streak</span><span class="info-value" style="color:var(--red);font-weight:700;">${stats.longest_loss_streak}</span></div>
+                    <div class="info-row"><span class="info-label">Current Win Streak</span><span class="info-value" style="color:${stats.current_win_streak > 0 ? 'var(--green)' : 'var(--text-muted)'};">${stats.current_win_streak || '—'}</span></div>
+                    <div class="info-row"><span class="info-label">Current Loss Streak</span><span class="info-value" style="color:${stats.current_loss_streak > 0 ? 'var(--red)' : 'var(--text-muted)'};">${stats.current_loss_streak || '—'}</span></div>
+                `;
+
+                // Singles opponents card
+                const singlesHtml = (stats.top_singles_opponents || []).map(o => `
+                    <div class="info-row" style="padding:6px 0;">
+                        <a href="/wrestler/${o.wrestler_id}" style="color:var(--text-primary);text-decoration:none;font-weight:600;">${o.name}</a>
+                        <span>
+                            <span style="color:var(--accent);font-weight:700;">${Math.round(o.elo)}</span>
+                            <span style="color:var(--text-muted);font-size:0.8rem;margin-left:8px;">${o.wins}W-${o.losses}L${o.draws ? '-'+o.draws+'D' : ''}</span>
+                        </span>
+                    </div>
+                `).join('') || '<div style="color:var(--text-muted);">No singles matches found</div>';
+
+                document.getElementById('singlesOpponentsCard').innerHTML = `
+                    <h3 style="color: var(--accent); margin-bottom: 12px;">⚔️ Top Singles Opponents</h3>
+                    ${singlesHtml}
+                `;
+
+                // All match types opponents card
+                const allHtml = (stats.top_all_opponents || []).map(o => `
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+                        <div>
+                            <a href="/wrestler/${o.wrestler_id}" style="color:var(--text-primary);text-decoration:none;font-weight:600;">${o.name}</a>
+                            <span style="color:var(--text-muted);font-size:0.8rem;margin-left:8px;">${o.promotion || ''}</span>
+                        </div>
+                        <div style="text-align:right;">
+                            <span style="color:var(--accent);font-weight:700;">${Math.round(o.elo)}</span>
+                            <span style="color:var(--text-muted);font-size:0.8rem;margin-left:8px;">${o.wins}W-${o.losses}L${o.draws ? '-'+o.draws+'D' : ''}</span>
+                        </div>
+                    </div>
+                `).join('') || '<div style="color:var(--text-muted);">No opponents found</div>';
+
+                document.getElementById('allOpponentsCard').innerHTML = `
+                    <h3 style="color: var(--accent); margin-bottom: 12px;">🏟️ Top Opponents (All Match Types)</h3>
+                    ${allHtml}
+                `;
+            } catch(e) {
+                console.error('Failed to load wrestler stats:', e);
+            }
+        }
+
+        function sampleEloData(data, maxPoints) {
+            if (data.length <= maxPoints) return data;
+            // Min/max preserving sampler — divides data into buckets and keeps
+            // the min and max ELO point from each bucket, plus first and last overall.
+            // This ensures peaks and valleys (big wins, title matches) are never dropped.
+            const bucketSize = Math.ceil(data.length / (maxPoints / 2));
+            const result = [data[0]]; // always keep first
+            for (let i = 0; i < data.length; i += bucketSize) {
+                const bucket = data.slice(i, Math.min(i + bucketSize, data.length));
+                let minPt = bucket[0], maxPt = bucket[0];
+                for (const pt of bucket) {
+                    if (pt.elo < minPt.elo) minPt = pt;
+                    if (pt.elo > maxPt.elo) maxPt = pt;
+                }
+                // Add in chronological order
+                if (minPt === maxPt) {
+                    result.push(minPt);
+                } else {
+                    const minIdx = bucket.indexOf(minPt);
+                    const maxIdx = bucket.indexOf(maxPt);
+                    if (minIdx < maxIdx) {
+                        result.push(minPt, maxPt);
+                    } else {
+                        result.push(maxPt, minPt);
+                    }
+                }
+            }
+            if (result[result.length - 1] !== data[data.length - 1]) {
+                result.push(data[data.length - 1]); // always keep last
+            }
+            return result;
+        }
+
+        function setEloRange(range) {
+            if (!eloChart || eloFullData.length === 0) return;
+            let filtered = eloFullData;
+            if (range !== 'max') {
+                const years = parseInt(range);
+                const cutoff = new Date();
+                cutoff.setFullYear(cutoff.getFullYear() - years);
+                const cutoffStr = cutoff.toISOString().slice(0, 10);
+                filtered = eloFullData.filter(h => h.match_date >= cutoffStr);
+            }
+            const sampled = sampleEloData(filtered, 800);
+            eloChart.data.datasets[0].data = sampled.map(h => ({ x: h.match_date, y: Math.round(h.elo) }));
+            // Update tooltip reference
+            eloChart._suzuFullData = sampled;
+            if (range === 'max') {
+                eloChart.options.scales.x.min = undefined;
+                eloChart.options.scales.x.max = undefined;
+            } else {
+                const years = parseInt(range);
+                const cutoff = new Date();
+                cutoff.setFullYear(cutoff.getFullYear() - years);
+                eloChart.options.scales.x.min = cutoff.toISOString().slice(0, 10);
+                eloChart.options.scales.x.max = undefined;
+            }
+            eloChart.resetZoom();
+            eloChart.update();
+            // Update button states
+            document.querySelectorAll('.elo-range-btn').forEach(b => {
+                b.classList.remove('btn-accent', 'active');
+                b.classList.add('btn-ghost');
+            });
+            event.target.classList.remove('btn-ghost');
+            event.target.classList.add('btn-accent', 'active');
+        }
+
+        async function buildEloChart() {
+            const ctx = document.getElementById('eloChart');
+            if (!ctx) return;
+            const id = getWrestlerID();
+            const history = await fetch(`/api/wrestlers/${id}/elo-history`).then(r => r.json());
+            eloFullData = history;
+            let data = sampleEloData(history, 800);
+            const fullData = data; // sampled enriched data for tooltips
+            eloChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'ELO Rating',
+                        data: data.map(h => ({ x: h.match_date, y: Math.round(h.elo) })),
+                        borderColor: '#e91e63',
+                        backgroundColor: 'rgba(233, 30, 99, 0.1)',
+                        fill: true, tension: 0.2, pointRadius: 0, pointHitRadius: 5, borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: (items) => {
+                                    if (!items[0]) return '';
+                                    const fd = eloChart._suzuFullData || fullData;
+                                    const point = fd[items[0].dataIndex];
+                                    if (point && point.event_name) {
+                                        return point.event_name + ' — ' + new Date(point.match_date).toLocaleDateString();
+                                    }
+                                    return new Date(items[0].parsed.x).toLocaleDateString();
+                                },
+                                label: (ctx) => {
+                                    const fd = eloChart._suzuFullData || fullData;
+                                    const point = fd[ctx.dataIndex];
+                                    const lines = ['ELO: ' + ctx.parsed.y];
+                                    if (point) {
+                                        if (point.opponents) lines.push('vs ' + point.opponents);
+                                        if (point.result) {
+                                            const rt = point.result === 'W' ? 'Win' : point.result === 'L' ? 'Loss' : 'Draw';
+                                            lines.push('Result: ' + rt);
+                                        }
+                                        if (point.elo_change) {
+                                            const sign = point.elo_change > 0 ? '+' : '';
+                                            lines.push('Change: ' + sign + point.elo_change.toFixed(1));
+                                        }
+                                    }
+                                    return lines;
+                                }
+                            }
+                        },
+                        zoom: {
+                            zoom: {
+                                wheel: { enabled: true },
+                                pinch: { enabled: true },
+                                mode: 'x',
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                            },
+                        },
+                    },
+                    scales: {
+                        x: { type: 'time', display: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#55556a', maxTicksLimit: 8 }, time: { unit: 'year', displayFormats: { year: 'yyyy' } } },
+                        y: { display: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#55556a' } }
+                    }
+                }
+            });
+        }
+
+        // --- Mod Actions ---
+        function showModActions() {
+            const user = window.joshiAuth?.getUser();
+            const el = document.getElementById('modActions');
+            if (el && user && (user.role === 'admin' || user.role === 'moderator')) {
+                el.style.display = 'flex';
+            }
+        }
+
+        async function setWrestlerPfp(id) {
+            const url = prompt('Enter image URL for profile picture:');
+            if (!url) return;
+            try {
+                const resp = await fetch(`/api/mod/wrestlers/${id}/image`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ image_url: url })
+                });
+                const data = await resp.json();
+                if (!resp.ok) { alert(data.error || 'Failed'); return; }
+                alert(data.message);
+                location.reload();
+            } catch(e) { alert('Error: ' + e.message); }
+        }
+
+        async function ghostWrestler(id, name) {
+            if (!confirm(`👻 Ghost "${name}"?\n\nThis will:\n• Remove them from rankings\n• Convert their match participations to ghost entries\n• Add them to the skip list\n\nThis cannot be easily undone!`)) return;
+            if (!confirm(`Really ghost ${name}? Last chance!`)) return;
+            try {
+                const resp = await fetch(`/api/mod/wrestlers/${id}/ghost`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) { alert(data.error || 'Failed'); return; }
+                alert(data.message);
+                window.location.href = '/';
+            } catch(e) { alert('Error: ' + e.message); }
+        }
+
+        // Show mod buttons once auth is ready
+        window.addEventListener('joshi-auth-change', showModActions);
+
+        loadWrestler().then(() => {
+            // Check after wrestler page has rendered
+            showModActions();
+            // Also retry in case auth resolves after page load
+            setTimeout(showModActions, 1000);
+            setTimeout(showModActions, 3000);
+        });
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

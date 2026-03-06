@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ELO Timeline | Joshitori</title>
+    <meta name="description" content="Track how joshi wrestler ELO ratings have changed over time. View historical snapshots and era leaders.">
+    <link rel="canonical" href="https://joshitori.com/timeline">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="ELO Timeline | Joshitori">
+    <meta property="og:description" content="Track how joshi wrestler ELO ratings have changed over time. View historical snapshots and era leaders.">
+    <meta property="og:url" content="https://joshitori.com/timeline">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="ELO Timeline | Joshitori">
+    <meta name="twitter:description" content="Track how joshi wrestler ELO ratings have changed over time. View historical snapshots and era leaders.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+    <style>
+        .timeline-controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .timeline-controls label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .range-slider {
+            flex: 1;
+            min-width: 200px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .range-slider input[type="range"] {
+            flex: 1;
+            accent-color: var(--accent);
+        }
+        .range-value {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            min-width: 40px;
+            color: var(--accent);
+        }
+        .chart-container { height: 400px; margin: 20px 0; }
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin: 32px 0 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-desc {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 16px;
+        }
+        .era-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .snapshot-grid {
+            margin-top: 16px;
+            overflow-x: auto;
+        }
+        .snapshot-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .snapshot-table th {
+            text-align: left;
+            padding: 8px 12px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+        .snapshot-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+        .snapshot-table tr {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .snapshot-table tr:hover {
+            background: var(--bg-secondary);
+        }
+        .snapshot-rank {
+            font-weight: 800;
+            font-size: 1.1rem;
+            color: var(--text-muted);
+        }
+        .snapshot-rank.r1 { color: var(--gold); }
+        .snapshot-rank.r2 { color: var(--silver); }
+        .snapshot-rank.r3 { color: var(--bronze); }
+        .snapshot-momentum-high { color: #4ade80; font-weight: 600; }
+        .snapshot-momentum-low { color: var(--red); font-weight: 600; }
+        .snapshot-momentum-neutral { color: var(--text-muted); }
+        .rivalry-table td { font-size: 0.85rem; }
+        .rivalry-record {
+            font-variant-numeric: tabular-nums;
+            font-size: 0.8rem;
+        }
+        .rivalry-span {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+        .era-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .era-pioneer { background: rgba(255, 152, 0, 0.15); color: #ff9800; }
+        .era-golden { background: rgba(255, 215, 0, 0.15); color: #ffd700; }
+        .era-modern { background: rgba(233, 30, 99, 0.15); color: #e91e63; }
+        .era-current { background: rgba(76, 175, 80, 0.15); color: #4caf50; }
+
+        .year-scrubber {
+            position: relative;
+            padding: 20px 0;
+        }
+        .year-scrubber input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent);
+            height: 8px;
+        }
+        .year-display {
+            text-align: center;
+            font-size: 3rem;
+            font-weight: 900;
+            color: var(--accent);
+            margin: 8px 0;
+            font-variant-numeric: tabular-nums;
+        }
+        .btn-group {
+            display: flex;
+            gap: 4px;
+        }
+        .btn-group .btn {
+            padding: 6px 12px;
+            font-size: 0.8rem;
+        }
+        .btn-group .btn.active {
+            background: var(--accent);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+<div class="container">
+        <div class="page-header">
+            <h1>⏳ The Story of Joshi Wrestling</h1>
+            <p>90 years of women's wrestling told through data — from 1930s pioneers to today's stars</p>
+        </div>
+
+        <!-- Time Machine -->
+        <div class="era-card">
+            <div class="section-title">🕰️ Time Machine</div>
+            <div class="section-desc">Scrub through time to see who ruled joshi at any point in history</div>
+            <div class="year-scrubber">
+                <div class="year-display" id="yearDisplay">1995</div>
+                <input type="range" id="yearSlider" min="1955" max="2025" value="1995" step="1">
+            </div>
+            <div class="snapshot-grid" id="snapshotGrid">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+
+        <!-- ELO Race Chart -->
+        <div class="era-card">
+            <div class="section-title">📈 The ELO Race</div>
+            <div class="section-desc">Top 10 wrestlers' ELO over time — watch the lead change hands across eras</div>
+            <div class="timeline-controls">
+                <div class="btn-group">
+                    <button class="btn btn-ghost active" data-range="all" onclick="setELORange('all', this)">All Time</button>
+                    <button class="btn btn-ghost" data-range="80s" onclick="setELORange('80s', this)">80s</button>
+                    <button class="btn btn-ghost" data-range="90s" onclick="setELORange('90s', this)">90s Golden Age</button>
+                    <button class="btn btn-ghost" data-range="00s" onclick="setELORange('00s', this)">2000s</button>
+                    <button class="btn btn-ghost" data-range="10s" onclick="setELORange('10s', this)">2010s</button>
+                    <button class="btn btn-ghost" data-range="20s" onclick="setELORange('20s', this)">2020s</button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="eloRaceChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Activity Chart -->
+        <div class="era-card">
+            <div class="section-title">🎪 The Growth of Joshi</div>
+            <div class="section-desc">Matches per year and active wrestlers — the rise, boom, and evolution</div>
+            <div class="chart-container">
+                <canvas id="activityChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Greatest Rivalries -->
+        <div class="era-card">
+            <div class="section-title">⚔️ Greatest Rivalries</div>
+            <div class="section-desc">The most prolific matchups in joshi history — decades of war</div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Wrestler 1</th>
+                            <th>vs</th>
+                            <th>Wrestler 2</th>
+                            <th>Total</th>
+                            <th>Breakdown</th>
+                            <th>Record</th>
+                            <th>Span</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rivalriesBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Era Summaries -->
+        <div class="era-card">
+            <div class="section-title">📜 Era Breakdown</div>
+            <div class="section-desc">Key stats by decade</div>
+            <div id="eraBreakdown" class="stats-grid"></div>
+        </div>
+    </div>
+
+    <script>
+    const COLORS = [
+        '#e91e63', '#2196f3', '#ffd700', '#4caf50', '#ff9800',
+        '#9c27b0', '#00bcd4', '#ff5722', '#8bc34a', '#e040fb',
+        '#795548', '#607d8b', '#f44336', '#3f51b5', '#009688'
+    ];
+
+    let eloLeadersData = null;
+    let eraStatsData = null;
+    let eloRaceChart = null;
+    let activityChart = null;
+    let snapshotDebounce = null;
+
+    // ----- Time Machine -----
+    const yearSlider = document.getElementById('yearSlider');
+    const yearDisplay = document.getElementById('yearDisplay');
+
+    yearSlider.addEventListener('input', () => {
+        yearDisplay.textContent = yearSlider.value;
+        clearTimeout(snapshotDebounce);
+        snapshotDebounce = setTimeout(() => loadSnapshot(yearSlider.value), 200);
+    });
+
+    async function loadSnapshot(year) {
+        const grid = document.getElementById('snapshotGrid');
+        try {
+            const res = await fetch(`/api/timeline/snapshot?year=${year}&top=20`);
+            const data = await res.json();
+            if (!data || data.length === 0) {
+                grid.innerHTML = '<div class="empty">No data for this year</div>';
+                return;
+            }
+            function mDisp(m) {
+                const val = Math.abs(m).toFixed(1);
+                if (m > 0) return `▲ ${val}`;
+                if (m < 0) return `▼ ${val}`;
+                return `- ${val}`;
+            }
+            function mClass(m) {
+                if (m > 0) return 'snapshot-momentum-high';
+                if (m < 0) return 'snapshot-momentum-low';
+                return 'snapshot-momentum-neutral';
+            }
+            grid.innerHTML = `
+                <table class="snapshot-table">
+                    <thead><tr>
+                        <th>#</th><th>Wrestler</th><th>ELO</th><th>Momentum</th><th>Record</th><th>Win%</th><th>Matches</th>
+                    </tr></thead>
+                    <tbody>
+                        ${data.map((w, i) => {
+                            const total = w.wins + w.losses + w.draws;
+                            const winPct = total > 0 ? Math.round((w.wins / total) * 100) : 0;
+                            return `
+                                <tr onclick="window.location='/wrestler/${w.wrestler_id}'">
+                                    <td><span class="snapshot-rank ${i < 3 ? 'r' + (i+1) : ''}">${i+1}</span></td>
+                                    <td>
+                                        <div style="font-weight: 600;">${w.name}</div>
+                                        <div style="font-size: 0.8rem; color: var(--text-muted);">${w.promotion || 'Freelance'}</div>
+                                    </td>
+                                    <td style="font-weight: 800; color: var(--accent);">${Math.round(w.elo)}</td>
+                                    <td><span class="${mClass(w.momentum)}">${mDisp(w.momentum)}</span></td>
+                                    <td>
+                                        <span style="color: #4ade80;">${w.wins}W</span> ·
+                                        <span style="color: var(--red);">${w.losses}L</span> ·
+                                        <span style="color: var(--text-muted);">${w.draws}D</span>
+                                    </td>
+                                    <td>${winPct}%</td>
+                                    <td>${total}</td>
+                                </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>`;
+        } catch (e) {
+            grid.innerHTML = '<div class="empty">Error loading snapshot</div>';
+        }
+    }
+
+    // ----- ELO Race Chart -----
+    async function loadELOLeaders() {
+        const res = await fetch('/api/timeline/elo-leaders?top=10&from=1955&to=2025');
+        eloLeadersData = await res.json();
+        renderELORace('all');
+    }
+
+    function setELORange(range, btn) {
+        document.querySelectorAll('.btn-group .btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderELORace(range);
+    }
+
+    function renderELORace(range) {
+        if (!eloLeadersData) return;
+
+        const ranges = {
+            'all': [1955, 2025],
+            '80s': [1980, 1989],
+            '90s': [1990, 1999],
+            '00s': [2000, 2009],
+            '10s': [2010, 2019],
+            '20s': [2020, 2025]
+        };
+        const [from, to] = ranges[range];
+
+        // Filter data to range
+        const filtered = eloLeadersData.filter(d => d.year >= from && d.year <= to);
+
+        // Get unique wrestlers in this range (only those who appear in top 10)
+        const wrestlerMap = {};
+        filtered.forEach(d => {
+            if (!wrestlerMap[d.wrestler_id]) {
+                wrestlerMap[d.wrestler_id] = { name: d.name, data: [] };
+            }
+            wrestlerMap[d.wrestler_id].data.push({ x: d.year, y: Math.round(d.elo) });
+        });
+
+        // Only show wrestlers who were #1 at some point, or appeared 3+ times
+        const datasets = Object.entries(wrestlerMap)
+            .filter(([_, w]) => w.data.length >= 2)
+            .sort((a, b) => {
+                const maxA = Math.max(...a[1].data.map(d => d.y));
+                const maxB = Math.max(...b[1].data.map(d => d.y));
+                return maxB - maxA;
+            })
+            .slice(0, 12)
+            .map(([id, w], i) => ({
+                label: w.name,
+                data: w.data,
+                borderColor: COLORS[i % COLORS.length],
+                backgroundColor: COLORS[i % COLORS.length] + '33',
+                borderWidth: 2,
+                pointRadius: 3,
+                tension: 0.3,
+                fill: false
+            }));
+
+        if (eloRaceChart) eloRaceChart.destroy();
+        eloRaceChart = new Chart(document.getElementById('eloRaceChart'), {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'nearest', intersect: false },
+                plugins: {
+                    legend: {
+                        labels: { color: '#8888a0', font: { size: 11 } },
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: items => `Year ${items[0].raw.x}`,
+                            label: item => `${item.dataset.label}: ${item.raw.y} ELO`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        ticks: { color: '#55556a', stepSize: range === 'all' ? 5 : 1, callback: v => String(v) },
+                        grid: { color: '#1e1e2a' }
+                    },
+                    y: {
+                        ticks: { color: '#55556a' },
+                        grid: { color: '#1e1e2a' },
+                        title: { display: true, text: 'ELO Rating', color: '#55556a' }
+                    }
+                }
+            }
+        });
+    }
+
+    // ----- Activity Chart -----
+    async function loadEraStats() {
+        const res = await fetch('/api/timeline/era-stats?from=1950&to=2025');
+        eraStatsData = await res.json();
+        renderActivityChart();
+        renderEraBreakdown();
+    }
+
+    function renderActivityChart() {
+        if (!eraStatsData) return;
+
+        const labels = eraStatsData.map(d => d.year);
+
+        activityChart = new Chart(document.getElementById('activityChart'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Matches',
+                        data: eraStatsData.map(d => d.matches),
+                        backgroundColor: '#e91e6355',
+                        borderColor: '#e91e63',
+                        borderWidth: 1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Active Wrestlers',
+                        data: eraStatsData.map(d => d.active_wrestlers),
+                        type: 'line',
+                        borderColor: '#2196f3',
+                        backgroundColor: '#2196f333',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        fill: true,
+                        yAxisID: 'y1'
+                    },
+                    {
+                        label: 'Debuts',
+                        data: eraStatsData.map(d => d.debuts),
+                        type: 'line',
+                        borderColor: '#4caf50',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        labels: { color: '#8888a0' },
+                        position: 'bottom'
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#55556a', maxRotation: 45 },
+                        grid: { color: '#1e1e2a' }
+                    },
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        ticks: { color: '#e91e63' },
+                        grid: { color: '#1e1e2a' },
+                        title: { display: true, text: 'Matches', color: '#e91e63' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        ticks: { color: '#2196f3' },
+                        grid: { display: false },
+                        title: { display: true, text: 'Wrestlers', color: '#2196f3' }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderEraBreakdown() {
+        if (!eraStatsData) return;
+        const decades = {};
+        eraStatsData.forEach(d => {
+            const dec = Math.floor(d.year / 10) * 10;
+            if (!decades[dec]) decades[dec] = { matches: 0, wrestlers: new Set(), debuts: 0, titles: 0, years: 0 };
+            decades[dec].matches += d.matches;
+            decades[dec].debuts += d.debuts;
+            decades[dec].titles += d.title_matches;
+            decades[dec].years++;
+            // active_wrestlers is per-year, take max as peak
+            if (d.active_wrestlers > (decades[dec].peakWrestlers || 0)) {
+                decades[dec].peakWrestlers = d.active_wrestlers;
+            }
+        });
+
+        const eraNames = {
+            1950: ['🌅 Pioneer Era', 'era-pioneer', '1950–1959'],
+            1960: ['🎌 Foundation', 'era-pioneer', '1960–1969'],
+            1970: ['⭐ Rising', 'era-pioneer', '1970–1979'],
+            1980: ['🔥 Boom Begins', 'era-golden', '1980–1989'],
+            1990: ['👑 Golden Age', 'era-golden', '1990–1999'],
+            2000: ['🌍 Global Expansion', 'era-modern', '2000–2009'],
+            2010: ['💎 Modern Renaissance', 'era-modern', '2010–2019'],
+            2020: ['⚡ New Generation', 'era-current', '2020–present']
+        };
+
+        const container = document.getElementById('eraBreakdown');
+        container.innerHTML = Object.entries(decades)
+            .filter(([dec]) => parseInt(dec) >= 1950)
+            .map(([dec, d]) => {
+                const [name, cls, years] = eraNames[dec] || [`${dec}s`, 'era-pioneer', `${dec}–${parseInt(dec)+9}`];
+                return `
+                    <div class="stat-card">
+                        <div class="era-badge ${cls}">${name}</div>
+                        <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px">${years}</div>
+                        <div class="value" style="font-size:1.4rem; margin-top:8px">${(d.matches/1000).toFixed(0)}k</div>
+                        <div class="label">matches</div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:6px">
+                            Peak ${d.peakWrestlers || '?'} wrestlers<br>
+                            ${d.debuts} debuts
+                        </div>
+                    </div>
+                `;
+            }).join('');
+    }
+
+    // ----- Rivalries -----
+    async function loadRivalries() {
+        const res = await fetch('/api/network/rivalries?limit=30&min_matches=30');
+        const data = await res.json();
+
+        const tbody = document.getElementById('rivalriesBody');
+        tbody.innerHTML = data.map((r, i) => {
+            const firstYear = new Date(r.first_match).getFullYear();
+            const lastYear = new Date(r.last_match).getFullYear();
+
+            // Build breakdown pills
+            const parts = [];
+            if (r.singles > 0) parts.push(`<span style="color:var(--accent)">${r.singles} 1v1</span>`);
+            if (r.tags > 0) parts.push(`<span style="color:var(--blue)">${r.tags} tag</span>`);
+            if (r.trios > 0) parts.push(`<span style="color:var(--text-muted)">${r.trios} trios</span>`);
+            if (r.multi_person > 0) parts.push(`<span style="color:var(--text-muted)">${r.multi_person} multi</span>`);
+            const breakdown = parts.join(' · ');
+
+            return `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td><a href="/wrestler/${r.wrestler1_id}">${r.wrestler1_name}</a></td>
+                    <td style="text-align:center">⚔️</td>
+                    <td><a href="/wrestler/${r.wrestler2_id}">${r.wrestler2_name}</a></td>
+                    <td><strong>${r.match_count.toLocaleString()}</strong></td>
+                    <td class="rivalry-record" style="font-size:0.75rem">${breakdown}</td>
+                    <td class="rivalry-record">
+                        <span class="w">${r.w1_wins}</span>-<span class="l">${r.w2_wins}</span>-<span class="d">${r.draws}</span>
+                    </td>
+                    <td class="rivalry-span">${firstYear}–${lastYear}<br>${r.span_years}yr</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // ----- Init -----
+    Promise.all([
+        loadSnapshot(1995),
+        loadELOLeaders(),
+        loadEraStats(),
+        loadRivalries()
+    ]);
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

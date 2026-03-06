@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joshi Wrestling Rankings | Joshitori</title>
+    <meta name="description" content="Browse the complete ELO power rankings for women's pro wrestling. Filter by promotion, weight class, and more.">
+    <link rel="canonical" href="https://joshitori.com/rankings">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Joshi Wrestling Rankings | Joshitori">
+    <meta property="og:description" content="Browse the complete ELO power rankings for women's pro wrestling. Filter by promotion, weight class, and more.">
+    <meta property="og:url" content="https://joshitori.com/rankings">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Joshi Wrestling Rankings | Joshitori">
+    <meta name="twitter:description" content="Browse the complete ELO power rankings for women's pro wrestling. Filter by promotion, weight class, and more.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+<div class="container">
+        <div class="page-header">
+            <h1>💪 Power Rankings</h1>
+            <p>ELO-based rankings across all women's professional wrestling</p>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="value" id="statWrestlers">—</div>
+                <div class="label">Wrestlers</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="statMatches">—</div>
+                <div class="label">Matches</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="statTopElo">—</div>
+                <div class="label">Highest ELO</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="statTopName">—</div>
+                <div class="label">#1 Ranked</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-bar">
+            <input type="text" id="searchBox" placeholder="Search wrestlers or promotion..." oninput="applyFilters()">
+            <select id="tierFilter" onchange="applyFilters()">
+                <option value="">All Tiers</option>
+            </select>
+            <select id="promoFilter" onchange="applyFilters()">
+                <option value="">All Promotions</option>
+            </select>
+            <select id="minMatchesFilter" onchange="applyFilters()">
+                <option value="0">Any # Matches</option>
+                <option value="10">10+ Matches</option>
+                <option value="50" selected>50+ Matches</option>
+                <option value="100">100+ Matches</option>
+                <option value="500">500+ Matches</option>
+                <option value="1000">1000+ Matches</option>
+            </select>
+            <select id="activeFilter" onchange="applyFilters()">
+                <option value="10" selected>Active last 10 yrs</option>
+                <option value="5">Active last 5 yrs</option>
+                <option value="3">Active last 3 yrs</option>
+                <option value="1">Active last year</option>
+                <option value="0">All time</option>
+            </select>
+            <select id="regionFilter" onchange="applyFilters()">
+                <option value="">All Regions</option>
+            </select>
+            <select id="limitSelect" onchange="applyFilters()">
+                <option value="50">Top 50</option>
+                <option value="100" selected>Top 100</option>
+                <option value="250">Top 250</option>
+                <option value="500">Top 500</option>
+                <option value="0">All</option>
+            </select>
+        </div>
+
+        <!-- Rankings Table -->
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:40px">#</th>
+                        <th style="width:50px; cursor:pointer; white-space:nowrap" onclick="sortTable('overall')">Rank <span id="sort-overall" class="sort-arrow">▲</span></th>
+                        <th style="cursor:pointer; white-space:nowrap" onclick="sortTable('name')">Wrestler <span id="sort-name" class="sort-arrow"></span></th>
+                        <th style="cursor:pointer; white-space:nowrap" onclick="sortTable('tier')">Tier <span id="sort-tier" class="sort-arrow"></span></th>
+                        <th style="width:80px; cursor:pointer; white-space:nowrap" onclick="sortTable('elo')">ELO <span id="sort-elo" class="sort-arrow"></span></th>
+                        <th style="width:80px; cursor:pointer; white-space:nowrap" onclick="sortTable('momentum')">Momentum <span id="sort-momentum" class="sort-arrow"></span></th>
+                        <th style="width:140px; cursor:pointer; white-space:nowrap" onclick="sortTable('record')">Record <span id="sort-record" class="sort-arrow"></span></th>
+                        <th style="width:70px; cursor:pointer; white-space:nowrap" onclick="sortTable('winpct')">Win% <span id="sort-winpct" class="sort-arrow"></span></th>
+                        <th style="width:80px; cursor:pointer; white-space:nowrap" onclick="sortTable('matches')">Matches <span id="sort-matches" class="sort-arrow"></span></th>
+                    </tr>
+                </thead>
+                <tbody id="rankingsBody">
+                    <tr><td colspan="9"><div class="loading">Loading rankings...</div></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let allRankings = [];
+        let allWrestlers = [];
+        let currentSort = 'overall';
+        let sortAsc = true;
+        // Record column cycles: wins → wins desc → losses → losses desc → draws → draws desc → reset
+        const recordCycle = ['wins-desc', 'wins-asc', 'losses-desc', 'losses-asc', 'draws-desc', 'draws-asc'];
+        let recordIndex = -1;
+
+        // --- Tier definitions (loaded from API — single source of truth) ---
+        let tierDefs = [];
+
+        async function loadTiers() {
+            try {
+                tierDefs = await (await fetch('/api/tiers')).json();
+                // Populate tier filter dropdown
+                const select = document.getElementById('tierFilter');
+                const groups = {};
+                tierDefs.forEach(t => {
+                    // Group by base name (strip number suffix)
+                    const base = t.name.replace(/\s*\d+$/, '');
+                    if (!groups[base]) groups[base] = t.icon;
+                });
+                Object.entries(groups).forEach(([name, icon]) => {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = `${icon} ${name}`;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('Failed to load tiers:', e);
+            }
+        }
+
+        function getTier(rank, total) {
+            if (total === 0) return { tier: 'Seadling', tierIcon: '🌱' };
+            const pct = (rank / total) * 100;
+            for (const t of tierDefs) {
+                if (pct <= t.max_pct) return { tier: t.name, tierIcon: t.icon };
+            }
+            return { tier: 'Seadling', tierIcon: '🌱' };
+        }
+
+        // --- Tier CSS class ---
+        function tierClass(tier) {
+            return 'tier-' + tier.toLowerCase().replace(/\s+/g, '-').replace(/\d+/g, '').replace(/-$/, '');
+        }
+
+        // --- ELO color class ---
+        function eloClass(elo) {
+            if (elo >= 5000) return 'elo-high';
+            if (elo >= 2000) return 'elo-mid';
+            return 'elo-low';
+        }
+
+        // --- Momentum display ---
+        function momentumDisplay(momentum) {
+            const val = Math.abs(momentum).toFixed(1);
+            if (momentum > 0) return `▲ ${val}`;
+            if (momentum < 0) return `▼ ${val}`;
+            return `- ${val}`;
+        }
+
+        function momentumClass(momentum) {
+            if (momentum > 0) return 'momentum-high';
+            if (momentum < 0) return 'momentum-low';
+            return 'momentum-neutral';
+        }
+
+        // --- Rank display ---
+        function rankHTML(rank) {
+            let cls = '';
+            if (rank === 1) cls = 'rank-1';
+            else if (rank === 2) cls = 'rank-2';
+            else if (rank === 3) cls = 'rank-3';
+            return `<span class="rank ${cls}">${rank}</span>`;
+        }
+
+        // --- Format number ---
+        function fmt(n) {
+            return n.toLocaleString();
+        }
+
+        // --- Load data ---
+        async function loadData() {
+            try {
+                await loadTiers(); // load tier definitions first
+                const [wrestlers, matchData] = await Promise.all([
+                    fetch('/api/wrestlers').then(r => r.json()),
+                    fetch('/api/matches/count').then(r => r.json()),
+                ]);
+
+                allWrestlers = wrestlers;
+
+                // Sort by ELO descending to build rankings
+                const sorted = [...wrestlers].sort((a, b) => b.elo - a.elo);
+                const total = sorted.length;
+
+                allRankings = sorted.map((w, i) => {
+                    const rank = i + 1;
+                    const { tier, tierIcon } = getTier(rank, total);
+                    return { ...w, rank, tier, tierIcon };
+                });
+
+                // Stats
+                document.getElementById('statWrestlers').textContent = fmt(wrestlers.length);
+                document.getElementById('statMatches').textContent = fmt(matchData.count);
+                if (allRankings.length > 0) {
+                    document.getElementById('statTopElo').textContent = Math.round(allRankings[0].elo);
+                    document.getElementById('statTopName').textContent = allRankings[0].name;
+                }
+
+                // Populate promotion filter
+                const promos = [...new Set(wrestlers.map(w => w.promotion).filter(Boolean))].sort();
+                const promoSelect = document.getElementById('promoFilter');
+                promos.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p;
+                    opt.textContent = p;
+                    promoSelect.appendChild(opt);
+                });
+
+                // Populate region filter from birthplace
+                const regions = [...new Set(wrestlers.map(w => {
+                    if (!w.birthplace) return null;
+                    // Extract country/region (usually last part after comma)
+                    const parts = w.birthplace.split(',').map(s => s.trim());
+                    return parts[parts.length - 1] || null;
+                }).filter(Boolean))].sort();
+                const regionSelect = document.getElementById('regionFilter');
+                regions.forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = r;
+                    opt.textContent = r;
+                    regionSelect.appendChild(opt);
+                });
+
+                applyFilters();
+            } catch (e) {
+                document.getElementById('rankingsBody').innerHTML =
+                    '<tr><td colspan="7"><div class="empty">Failed to load data</div></td></tr>';
+            }
+        }
+
+        // --- Filter + Render ---
+        function applyFilters() {
+            const search = document.getElementById('searchBox').value.toLowerCase();
+            const tier = document.getElementById('tierFilter').value;
+            const promo = document.getElementById('promoFilter').value;
+            const minMatches = parseInt(document.getElementById('minMatchesFilter').value) || 0;
+            const activeYears = parseInt(document.getElementById('activeFilter').value);
+            const region = document.getElementById('regionFilter').value;
+            const limit = parseInt(document.getElementById('limitSelect').value);
+
+            let filtered = allRankings;
+
+            if (search) filtered = filtered.filter(w =>
+                w.name.toLowerCase().includes(search) ||
+                (w.promotion || '').toLowerCase().includes(search) ||
+                (w.birthplace || '').toLowerCase().includes(search)
+            );
+            if (tier) filtered = filtered.filter(w => w.tier.startsWith(tier));
+            if (promo) filtered = filtered.filter(w => w.promotion === promo);
+            if (minMatches > 0) filtered = filtered.filter(w => w.match_count >= minMatches);
+            if (activeYears > 0) {
+                const cutoff = new Date();
+                cutoff.setFullYear(cutoff.getFullYear() - activeYears);
+                filtered = filtered.filter(w => w.last_match_date && new Date(w.last_match_date) >= cutoff);
+            }
+            if (region) filtered = filtered.filter(w => w.birthplace && w.birthplace.includes(region));
+            // Update stats to reflect filtered data
+            document.getElementById('statWrestlers').textContent = fmt(filtered.length);
+            if (filtered.length > 0) {
+                document.getElementById('statTopElo').textContent = Math.round(filtered[0].elo);
+                document.getElementById('statTopName').textContent = filtered[0].name;
+            } else {
+                document.getElementById('statTopElo').textContent = '—';
+                document.getElementById('statTopName').textContent = '—';
+            }
+
+            if (limit > 0) filtered = filtered.slice(0, limit);
+
+            filtered = sortData(filtered);
+            renderTable(filtered);
+        }
+
+        function renderTable(rankings) {
+            const body = document.getElementById('rankingsBody');
+
+            if (rankings.length === 0) {
+                body.innerHTML = '<tr><td colspan="9"><div class="empty">No wrestlers match your filters</div></td></tr>';
+                return;
+            }
+
+            body.innerHTML = rankings.map((w, idx) => {
+                const totalMatches = w.match_count || (w.wins + w.losses + w.draws);
+                const winPct = totalMatches > 0 ? Math.round((w.wins / totalMatches) * 100) : 0;
+                const filteredRank = idx + 1;
+
+                return `
+                <tr onclick="window.location='/wrestler/${w.id}'">
+                    <td style="color: var(--text-muted); font-size: 0.8rem;">${idx + 1}</td>
+                    <td>${rankHTML(w.rank)}</td>
+                    <td>
+                        <div style="font-weight: 600;">${w.name}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">${w.promotion || 'Freelance'}</div>
+                    </td>
+                    <td><span class="tier-badge ${tierClass(w.tier)}">${w.tierIcon} ${w.tier}</span></td>
+                    <td><span class="elo ${eloClass(w.elo)}">${Math.round(w.elo)}</span></td>
+                    <td><span class="momentum ${momentumClass(w.momentum)}">${momentumDisplay(w.momentum)}</span></td>
+                    <td>
+                        <span class="record">
+                            <span class="w">${w.wins}W</span> ·
+                            <span class="l">${w.losses}L</span> ·
+                            <span class="d">${w.draws}D</span>
+                        </span>
+                    </td>
+                    <td>${winPct}%</td>
+                    <td>${fmt(totalMatches)}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        // --- Sorting ---
+        function sortTable(col) {
+            if (col === 'record') {
+                // Cycle through wins/losses/draws
+                recordIndex = (recordIndex + 1) % recordCycle.length;
+                currentSort = recordCycle[recordIndex];
+                sortAsc = currentSort.endsWith('-asc');
+                // Update arrow with label
+                const label = currentSort.replace('-desc', '').replace('-asc', '');
+                const labelMap = { wins: 'W', losses: 'L', draws: 'D' };
+                document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
+                const arrow = document.getElementById('sort-record');
+                if (arrow) arrow.textContent = `${labelMap[label]}${sortAsc ? '▲' : '▼'}`;
+                applyFilters();
+                return;
+            }
+            recordIndex = -1;
+            if (currentSort === col) {
+                sortAsc = !sortAsc;
+            } else {
+                currentSort = col;
+                sortAsc = (col === 'overall' || col === 'name' || col === 'tier');
+            }
+            document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
+            const arrow = document.getElementById('sort-' + col);
+            if (arrow) arrow.textContent = sortAsc ? '▲' : '▼';
+            applyFilters();
+        }
+
+        function sortData(data) {
+            const dir = sortAsc ? 1 : -1;
+            return [...data].sort((a, b) => {
+                let va, vb;
+                switch (currentSort) {
+                    case 'overall': va = a.rank; vb = b.rank; break;
+                    case 'name': return dir * a.name.localeCompare(b.name);
+                    case 'tier': va = a.rank; vb = b.rank; break;
+                    case 'elo': va = a.elo; vb = b.elo; break;
+                    case 'momentum': va = a.momentum || 0; vb = b.momentum || 0; break;
+                    case 'wins-desc': case 'wins-asc': va = a.wins; vb = b.wins; break;
+                    case 'losses-desc': case 'losses-asc': va = a.losses; vb = b.losses; break;
+                    case 'draws-desc': case 'draws-asc': va = a.draws; vb = b.draws; break;
+                    case 'winpct':
+                        const ta = a.wins + a.losses + a.draws;
+                        const tb = b.wins + b.losses + b.draws;
+                        va = ta > 0 ? a.wins / ta : 0;
+                        vb = tb > 0 ? b.wins / tb : 0;
+                        break;
+                    case 'matches': va = a.wins + a.losses + a.draws; vb = b.wins + b.losses + b.draws; break;
+                    default: va = a.rank; vb = b.rank;
+                }
+                return dir * (va - vb);
+            });
+        }
+
+        // --- Featured Section ---
+        
+
+        function renderWrestlerCard(cardId, wrestler) {
+            const card = document.getElementById(cardId);
+            const body = card.querySelector('.featured-body');
+            if (!wrestler) {
+                body.innerHTML = '<div class="fi-empty">No data</div>';
+                return;
+            }
+            const gainClass = wrestler.elo_gain >= 0 ? 'positive' : 'negative';
+            const gainSign = wrestler.elo_gain >= 0 ? '+' : '';
+            body.innerHTML = `
+                <a href="/wrestler/${wrestler.wrestler_id}" class="fc-name">${wrestler.name}</a>
+                <div class="fc-promo">${wrestler.promotion || 'Freelance'}</div>
+                <div class="fc-elo">${Math.round(wrestler.elo)} <span class="fc-gain ${gainClass}">${gainSign}${Math.round(wrestler.elo_gain)}</span></div>
+                <div class="fc-record">${wrestler.wins}W – ${wrestler.losses}L</div>
+            `;
+        }
+
+        // --- Init ---
+        
+        loadData();
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

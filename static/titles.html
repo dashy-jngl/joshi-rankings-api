@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Championship Titles | Joshitori</title>
+    <meta name="description" content="Browse women's pro wrestling championship titles tracked by Joshitori with ELO-based title prestige rankings.">
+    <link rel="canonical" href="https://joshitori.com/titles">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Championship Titles | Joshitori">
+    <meta property="og:description" content="Browse women's pro wrestling championship titles tracked by Joshitori with ELO-based title prestige rankings.">
+    <meta property="og:url" content="https://joshitori.com/titles">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Championship Titles | Joshitori">
+    <meta name="twitter:description" content="Browse women's pro wrestling championship titles tracked by Joshitori with ELO-based title prestige rankings.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+<div class="container">
+        <div class="page-header">
+            <h1>Championships</h1>
+            <p>Browse all tracked women's wrestling titles</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="value" id="statTotal">—</div>
+                <div class="label">Total Titles</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="statActive">—</div>
+                <div class="label">Active Titles</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="statReigns">—</div>
+                <div class="label">Total Reigns</div>
+            </div>
+        </div>
+
+        <div class="filters-bar">
+            <input type="text" id="searchBox" placeholder="Search titles..." oninput="applyFilters()">
+            <select id="promoFilter" onchange="applyFilters()">
+                <option value="">All Promotions</option>
+            </select>
+            <select id="statusFilter" onchange="applyFilters()">
+                <option value="">All Statuses</option>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+            </select>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="cursor:pointer" onclick="sortBy('title_name')">Title</th>
+                        <th style="cursor:pointer" onclick="sortBy('promotion')">Promotion</th>
+                        <th style="cursor:pointer" onclick="sortBy('status')">Status</th>
+                        <th style="cursor:pointer" onclick="sortBy('total_reigns')">Reigns</th>
+                        <th>Current Holder</th>
+                        <th style="cursor:pointer" onclick="sortBy('longest_reign_days')">Longest Reign</th>
+                    </tr>
+                </thead>
+                <tbody id="titlesBody">
+                    <tr><td colspan="6"><div class="loading">Loading titles...</div></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let allTitles = [];
+        let currentSort = 'total_reigns';
+        let sortAsc = false;
+
+        async function loadData() {
+            try {
+                const data = await fetch('/api/titles/stats?limit=500').then(r => r.json());
+                allTitles = data;
+
+                // Stats
+                document.getElementById('statTotal').textContent = data.length;
+                document.getElementById('statActive').textContent = data.filter(t => t.status === 'Active').length;
+                document.getElementById('statReigns').textContent = data.reduce((s, t) => s + t.total_reigns, 0).toLocaleString();
+
+                // Promotion filter
+                const promos = [...new Set(data.map(t => t.promotion).filter(Boolean))].sort();
+                const sel = document.getElementById('promoFilter');
+                promos.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p; opt.textContent = p;
+                    sel.appendChild(opt);
+                });
+
+                applyFilters();
+            } catch(e) {
+                document.getElementById('titlesBody').innerHTML = '<tr><td colspan="6"><div class="empty">Failed to load</div></td></tr>';
+            }
+        }
+
+        function applyFilters() {
+            const search = document.getElementById('searchBox').value.toLowerCase();
+            const promo = document.getElementById('promoFilter').value;
+            const status = document.getElementById('statusFilter').value;
+
+            let filtered = allTitles;
+            if (search) filtered = filtered.filter(t => t.title_name.toLowerCase().includes(search) || (t.promotion||'').toLowerCase().includes(search));
+            if (promo) filtered = filtered.filter(t => t.promotion === promo);
+            if (status) filtered = filtered.filter(t => t.status === status);
+
+            filtered = sortData(filtered);
+            render(filtered);
+        }
+
+        function sortBy(col) {
+            if (currentSort === col) sortAsc = !sortAsc;
+            else { currentSort = col; sortAsc = col === 'title_name'; }
+            applyFilters();
+        }
+
+        function sortData(data) {
+            const dir = sortAsc ? 1 : -1;
+            return [...data].sort((a, b) => {
+                const va = a[currentSort], vb = b[currentSort];
+                if (typeof va === 'string') return dir * (va||'').localeCompare(vb||'');
+                return dir * ((va||0) - (vb||0));
+            });
+        }
+
+        function render(titles) {
+            const body = document.getElementById('titlesBody');
+            if (!titles.length) { body.innerHTML = '<tr><td colspan="6"><div class="empty">No titles found</div></td></tr>'; return; }
+            body.innerHTML = titles.map(t => `
+                <tr onclick="window.location='/title/${t.cagematch_title_id}'">
+                    <td><strong>${t.title_name}</strong></td>
+                    <td>${t.promotion ? `<span class="promo-badge">${t.promotion}</span>` : '—'}</td>
+                    <td><span class="status-badge ${t.status === 'Active' ? 'status-active' : 'status-inactive'}">${t.status || '—'}</span></td>
+                    <td>${t.total_reigns}</td>
+                    <td>${t.current_holder || '—'}</td>
+                    <td>${t.longest_reign_days > 0 ? `${t.longest_holder} (${t.longest_reign_days}d)` : '—'}</td>
+                </tr>
+            `).join('');
+        }
+
+        loadData();
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

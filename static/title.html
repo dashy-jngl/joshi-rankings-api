@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Championship Title | Joshitori</title>
+    <meta name="description" content="View championship title history, current holder, and ELO prestige rating for this joshi wrestling title.">
+    <link rel="canonical" href="https://joshitori.com/title">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Championship Title | Joshitori">
+    <meta property="og:description" content="View championship title history, current holder, and ELO prestige rating for this joshi wrestling title.">
+    <meta property="og:url" content="https://joshitori.com/title">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Championship Title | Joshitori">
+    <meta name="twitter:description" content="View championship title history, current holder, and ELO prestige rating for this joshi wrestling title.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2/dist/chartjs-plugin-zoom.min.js"></script>
+    <style>
+        .title-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+        .title-header h1 { font-size: 2rem; font-weight: 800; }
+        .current-holder-card { background: var(--bg-card); border: 1px solid var(--green); border-radius: 10px; padding: 16px; margin-bottom: 24px; }
+        .current-holder-card h3 { color: var(--green); margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+<div class="container">
+        <div id="content">
+            <div class="loading">Loading title...</div>
+        </div>
+    </div>
+
+    <script>
+        const titleId = window.location.pathname.split('/').pop();
+
+        async function loadTitle() {
+            try {
+                const data = await fetch(`/api/titles/${titleId}`).then(r => r.json());
+                if (data.error) { document.getElementById('content').innerHTML = `<div class="empty">${data.error}</div>`; return; }
+
+                const t = data.title;
+                const s = data.stats;
+                document.title = `${t.name} — Joshitori`;
+
+                let html = `
+                    <div class="title-header">
+                        <h1>${t.name}</h1>
+                        ${t.promotion ? `<span class="promo-badge">${t.promotion}</span>` : ''}
+                        <span class="status-badge ${t.status === 'Active' ? 'status-active' : 'status-inactive'}">${t.status || 'Unknown'}</span>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card"><div class="value">${s.total_reigns}</div><div class="label">Total Reigns</div></div>
+                        <div class="stat-card"><div class="value">${s.avg_duration ? Math.round(s.avg_duration) + 'd' : '—'}</div><div class="label">Avg Duration</div></div>
+                        <div class="stat-card"><div class="value">${s.avg_holder_elo ? Math.round(s.avg_holder_elo) : '—'}</div><div class="label">Avg Holder ELO</div></div>
+                        <div class="stat-card"><div class="value">${data.longest_reign.days > 0 ? data.longest_reign.days + 'd' : '—'}</div><div class="label">Longest Reign</div></div>
+                    </div>
+                `;
+
+                // Current holders
+                if (data.current_holders && data.current_holders.length > 0) {
+                    html += `<div class="current-holder-card"><h3>👑 Current Champion${data.current_holders.length > 1 ? 's' : ''}</h3>`;
+                    data.current_holders.forEach(h => {
+                        const link = h.wrestler_id > 0 ? `<a href="/wrestler/${h.wrestler_id}">${h.wrestler_name}</a>` : h.wrestler_name;
+                        html += `<div style="font-size:1.1rem;font-weight:600;">${link} <span style="color:var(--text-muted);font-size:0.85rem;">since ${h.won_date?.slice(0,10) || '?'}</span></div>`;
+                    });
+                    html += `</div>`;
+                }
+
+                // ELO chart with range controls
+                html += `<div class="card" style="margin-bottom:24px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <h3 style="color:var(--accent)">Title Holder ELO History</h3>
+                        <div style="display:flex;gap:4px;">
+                            <button class="btn btn-ghost elo-range-btn" onclick="setTitleEloRange('1y')" style="font-size:0.75rem;padding:3px 8px;">1Y</button>
+                            <button class="btn btn-ghost elo-range-btn" onclick="setTitleEloRange('2y')" style="font-size:0.75rem;padding:3px 8px;">2Y</button>
+                            <button class="btn btn-ghost elo-range-btn" onclick="setTitleEloRange('5y')" style="font-size:0.75rem;padding:3px 8px;">5Y</button>
+                            <button class="btn btn-accent elo-range-btn active" onclick="setTitleEloRange('max')" style="font-size:0.75rem;padding:3px 8px;">MAX</button>
+                            <button class="btn btn-ghost" onclick="titleEloChart?.resetZoom()" style="font-size:0.75rem;padding:3px 8px;" title="Reset zoom">🔍</button>
+                        </div>
+                    </div>
+                    <div class="chart-container"><canvas id="eloChart"></canvas></div>
+                </div>`;
+
+                // Reign history table
+                html += `
+                    <h3 style="margin-bottom:12px">Reign History</h3>
+                    <div class="table-wrapper"><table>
+                        <thead><tr><th>#</th><th>Champion</th><th>Won</th><th>Lost</th><th>Duration</th><th>ELO</th></tr></thead>
+                        <tbody>
+                `;
+                // Group reigns by reign_number (tag partners share a reign number)
+                const grouped = [];
+                const raw = data.reigns || [];
+                for (const r of raw) {
+                    const last = grouped[grouped.length - 1];
+                    if (last && last.reignNum === r.reign_number) {
+                        // Same reign — add tag partner
+                        if (!last.names.includes(r.wrestler_name)) {
+                            last.names.push(r.wrestler_name);
+                            last.ids.push(r.wrestler_id);
+                        }
+                        if (r.elo > 0) { last.elos.push(r.elo); }
+                        if (r.duration_days > last.duration_days) last.duration_days = r.duration_days;
+                    } else {
+                        grouped.push({
+                            reignNum: r.reign_number,
+                            wonKey: r.won_date?.slice(0,10),
+                            names: [r.wrestler_name],
+                            ids: [r.wrestler_id],
+                            elos: r.elo > 0 ? [r.elo] : [],
+                            won_date: r.won_date,
+                            lost_date: r.lost_date,
+                            duration_days: r.duration_days,
+                            untracked: r.untracked,
+                        });
+                    }
+                }
+
+                grouped.forEach((g, i) => {
+                    const isCurrent = !g.lost_date;
+                    const holderHtml = g.names.map((name, j) => {
+                        const wid = g.ids[j];
+                        return wid > 0 ? `<a href="/wrestler/${wid}">${name}</a>` : name;
+                    }).join(' & ');
+                    const avgElo = g.elos.length > 0 ? Math.round(g.elos.reduce((a,b)=>a+b,0) / g.elos.length) : 0;
+                    const cls = isCurrent ? 'reign-current' : '';
+                    const reignNum = grouped.length - i;
+                    html += `<tr class="${cls}">
+                        <td>${reignNum}</td>
+                        <td>${holderHtml} ${g.untracked ? '<span style="color:var(--text-muted)">(untracked)</span>' : ''}</td>
+                        <td>${g.wonKey || '—'}</td>
+                        <td>${isCurrent ? '<span style="color:var(--green)">Current</span>' : (g.lost_date?.slice(0,10) || '—')}</td>
+                        <td>${g.duration_days > 0 ? g.duration_days + 'd' : '—'}</td>
+                        <td>${avgElo > 0 ? avgElo : '—'}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
+
+                document.getElementById('content').innerHTML = html;
+
+                // Load ELO chart
+                loadEloChart();
+            } catch(e) {
+                document.getElementById('content').innerHTML = '<div class="empty">Failed to load title</div>';
+            }
+        }
+
+        let titleEloChart = null;
+        let titleEloFullData = [];
+
+        function setTitleEloRange(range) {
+            if (!titleEloChart || titleEloFullData.length === 0) return;
+            let filtered = titleEloFullData;
+            if (range !== 'max') {
+                const years = parseInt(range);
+                const cutoff = new Date();
+                cutoff.setFullYear(cutoff.getFullYear() - years);
+                const cutoffStr = cutoff.toISOString().slice(0, 10);
+                filtered = titleEloFullData.filter(p => p.date >= cutoffStr);
+            }
+            titleEloChart.data.labels = filtered.map(p => p.date);
+            titleEloChart.data.datasets[0].data = filtered.map(p => p.elo);
+            titleEloChart._fullPoints = filtered;
+            if (range === 'max') {
+                titleEloChart.options.scales.x.min = undefined;
+                titleEloChart.options.scales.x.max = undefined;
+            } else {
+                const years = parseInt(range);
+                const cutoff = new Date();
+                cutoff.setFullYear(cutoff.getFullYear() - years);
+                titleEloChart.options.scales.x.min = cutoff.toISOString().slice(0, 10);
+                titleEloChart.options.scales.x.max = undefined;
+            }
+            titleEloChart.resetZoom();
+            titleEloChart.update();
+            document.querySelectorAll('.elo-range-btn').forEach(b => {
+                b.classList.remove('btn-accent', 'active');
+                b.classList.add('btn-ghost');
+            });
+            event.target.classList.remove('btn-ghost');
+            event.target.classList.add('btn-accent', 'active');
+        }
+
+        async function loadEloChart() {
+            try {
+                const points = await fetch(`/api/titles/${titleId}/elo-history`).then(r => r.json());
+                if (!points || !points.length) return;
+                titleEloFullData = points;
+
+                const ctx = document.getElementById('eloChart');
+                if (!ctx) return;
+                titleEloChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: points.map(p => p.date),
+                        datasets: [{
+                            label: 'Holder ELO',
+                            data: points.map(p => p.elo),
+                            borderColor: '#e91e63',
+                            backgroundColor: 'rgba(233,30,99,0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            borderWidth: 2,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { type: 'time', time: { unit: 'year', displayFormats: { year: 'yyyy' } }, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#55556a', maxTicksLimit: 8 } },
+                            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#55556a' } }
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    title: (items) => {
+                                        const fp = titleEloChart._fullPoints || points;
+                                        return fp[items[0]?.dataIndex]?.wrestler_name || '';
+                                    },
+                                    label: (item) => {
+                                        const fp = titleEloChart._fullPoints || points;
+                                        const p = fp[item.dataIndex];
+                                        return `ELO: ${Math.round(item.raw)}${p?.reign_number ? ' — Reign #' + p.reign_number : ''}`;
+                                    }
+                                }
+                            },
+                            zoom: {
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    mode: 'x',
+                                },
+                                pan: {
+                                    enabled: true,
+                                    mode: 'x',
+                                },
+                            },
+                        }
+                    }
+                });
+                titleEloChart._fullPoints = points;
+            } catch(e) {}
+        }
+
+        loadTitle();
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

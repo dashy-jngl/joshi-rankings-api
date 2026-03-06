@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stats & Records | Joshitori</title>
+    <meta name="description" content="All-time records and statistics for women's pro wrestling — highest ELO, longest win streaks, and more.">
+    <link rel="canonical" href="https://joshitori.com/stats">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Joshitori">
+    <meta property="og:title" content="Stats & Records | Joshitori">
+    <meta property="og:description" content="All-time records and statistics for women's pro wrestling — highest ELO, longest win streaks, and more.">
+    <meta property="og:url" content="https://joshitori.com/stats">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Stats & Records | Joshitori">
+    <meta name="twitter:description" content="All-time records and statistics for women's pro wrestling — highest ELO, longest win streaks, and more.">
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <style>
+        .records-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        .record-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+        }
+        .record-card h3 {
+            color: var(--accent);
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .record-entry {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .record-entry:last-child { border-bottom: none; }
+        .record-entry .pos {
+            color: var(--text-muted);
+            width: 24px;
+            font-weight: 600;
+        }
+        .record-entry .name {
+            flex: 1;
+            margin-left: 8px;
+        }
+        .record-entry .name a { color: var(--text-primary); }
+        .record-entry .name a:hover { color: var(--accent); }
+        .record-entry .value {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .record-entry .promo {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+        .tier-distribution {
+            margin-top: 24px;
+        }
+        .tier-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 6px 0;
+        }
+        .tier-bar .label {
+            width: 120px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .tier-bar .bar {
+            flex: 1;
+            height: 24px;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .tier-bar .fill {
+            height: 100%;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            min-width: 32px;
+        }
+    </style>
+</head>
+<body>
+    <script src="/static/js/nav.js?v=2"></script>
+<div class="container">
+        <div class="page-header">
+            <h1>📈 Stats & Records</h1>
+            <p>Fun facts and record holders across the joshi scene</p>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-bar">
+            <select id="promoFilter" onchange="loadStatsDebounced()">
+                <option value="">All Promotions</option>
+            </select>
+            <select id="minMatchesFilter" onchange="loadStatsDebounced()">
+                <option value="0">Any # Matches</option>
+                <option value="10">10+ Matches</option>
+                <option value="50" selected>50+ Matches</option>
+                <option value="100">100+ Matches</option>
+                <option value="500">500+ Matches</option>
+            </select>
+            <select id="activeFilter" onchange="loadStatsDebounced()">
+                <option value="10" selected>Active last 10 yrs</option>
+                <option value="5">Active last 5 yrs</option>
+                <option value="3">Active last 3 yrs</option>
+                <option value="1">Active last year</option>
+                <option value="0">All time</option>
+            </select>
+            <select id="regionFilter" onchange="loadStatsDebounced()">
+                <option value="">All Regions</option>
+            </select>
+        </div>
+
+        <div class="stats-grid" style="margin-bottom: 24px;">
+            <div class="stat-card">
+                <div class="value" id="statWrestlers">—</div>
+                <div class="label">Wrestlers</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="statMatches">—</div>
+                <div class="label">Matches</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="statPromos">—</div>
+                <div class="label">Promotions</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" id="statAvgElo">—</div>
+                <div class="label">Average ELO</div>
+            </div>
+        </div>
+
+        <div class="records-grid" id="records">
+            <div class="loading">Crunching numbers...</div>
+        </div>
+
+        <div class="tier-distribution card" style="margin-top: 24px;">
+            <h3 style="color: var(--accent); margin-bottom: 16px;">Tier Distribution</h3>
+            <div id="tierBars"></div>
+        </div>
+    </div>
+
+    <script>
+        let tierDefs = [];
+
+        async function loadTiers() {
+            try {
+                const raw = await (await fetch('/api/tiers')).json();
+                tierDefs = raw.map(t => ({ name: t.name, icon: t.icon, pct: t.max_pct, color: t.color }));
+            } catch (e) {
+                console.error('Failed to load tiers:', e);
+            }
+        }
+
+        function getTierByRank(rank, total) {
+            if (total === 0) return 'Seadling';
+            const pct = (rank / total) * 100;
+            for (const t of tierDefs) {
+                if (pct <= t.pct) return t.name;
+            }
+            return 'Seadling';
+        }
+
+        function recordCard(title, icon, entries) {
+            return `
+                <div class="record-card">
+                    <h3>${icon} ${title}</h3>
+                    ${entries.map((e, i) => `
+                        <div class="record-entry">
+                            <span class="pos">${i + 1}.</span>
+                            <span class="name">
+                                <a href="/wrestler/${e.id}">${e.name}</a>
+                                <div class="promo">${e.promotion || 'Freelance'}</div>
+                            </span>
+                            <span class="value">${e.display}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        let allWrestlersRaw = null;
+        let filtersPopulated = false;
+        let loadStatsTimer = null;
+
+        function loadStatsDebounced() {
+            clearTimeout(loadStatsTimer);
+            loadStatsTimer = setTimeout(loadStats, 150);
+        }
+
+        async function loadStats() {
+            if (tierDefs.length === 0) await loadTiers();
+            if (!allWrestlersRaw) {
+                const [wrestlers, matchData] = await Promise.all([
+                    fetch('/api/wrestlers').then(r => r.json()),
+                    fetch('/api/matches/count').then(r => r.json()),
+                ]);
+                allWrestlersRaw = wrestlers;
+                window._matchCount = matchData.count;
+
+                if (!filtersPopulated) {
+                    const promos = [...new Set(wrestlers.map(w => w.promotion).filter(Boolean))].sort();
+                    const promoSelect = document.getElementById('promoFilter');
+                    promos.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p; opt.textContent = p;
+                        promoSelect.appendChild(opt);
+                    });
+                    const regions = [...new Set(wrestlers.map(w => {
+                        if (!w.birthplace) return null;
+                        const parts = w.birthplace.split(',').map(s => s.trim());
+                        return parts[parts.length - 1] || null;
+                    }).filter(Boolean))].sort();
+                    const regionSelect = document.getElementById('regionFilter');
+                    regions.forEach(r => {
+                        const opt = document.createElement('option');
+                        opt.value = r; opt.textContent = r;
+                        regionSelect.appendChild(opt);
+                    });
+                    filtersPopulated = true;
+                }
+            }
+
+            // Apply filters
+            const promo = document.getElementById('promoFilter').value;
+            const minMatches = parseInt(document.getElementById('minMatchesFilter').value) || 0;
+            const region = document.getElementById('regionFilter').value;
+
+            let wrestlers = allWrestlersRaw;
+            if (promo) wrestlers = wrestlers.filter(w => w.promotion === promo);
+            if (minMatches > 0) wrestlers = wrestlers.filter(w => w.match_count >= minMatches);
+            const activeYears = parseInt(document.getElementById('activeFilter').value);
+            if (activeYears > 0) {
+                const cutoff = new Date();
+                cutoff.setFullYear(cutoff.getFullYear() - activeYears);
+                wrestlers = wrestlers.filter(w => w.last_match_date && new Date(w.last_match_date) >= cutoff);
+            }
+            if (region) wrestlers = wrestlers.filter(w => w.birthplace && w.birthplace.includes(region));
+
+            const matchData = { count: window._matchCount };
+
+            const sorted = [...wrestlers].sort((a, b) => b.elo - a.elo);
+            const total = wrestlers.length;
+
+            // Update header stats to reflect filters
+            document.getElementById('statWrestlers').textContent = total.toLocaleString();
+            document.getElementById('statMatches').textContent = matchData.count.toLocaleString();
+            const avgElo = total > 0 ? Math.round(wrestlers.reduce((s, w) => s + w.elo, 0) / total) : 0;
+            document.getElementById('statAvgElo').textContent = avgElo;
+            const promos = new Set(wrestlers.map(w => w.promotion).filter(Boolean));
+            document.getElementById('statPromos').textContent = promos.size;
+
+            // Record cards
+            const withMatches = wrestlers.map(w => ({
+                ...w,
+                totalMatches: w.wins + w.losses + w.draws,
+                winPct: (w.wins + w.losses) > 0 ? w.wins / (w.wins + w.losses) * 100 : 0,
+            }));
+
+            const records = document.getElementById('records');
+            records.innerHTML = [
+                recordCard('Highest ELO', '🏆',
+                    sorted.slice(0, 10).map(w => ({ ...w, display: Math.round(w.elo).toString() }))),
+
+                recordCard('Most Matches', '📊',
+                    [...withMatches].sort((a, b) => b.totalMatches - a.totalMatches).slice(0, 10)
+                        .map(w => ({ ...w, display: w.totalMatches.toLocaleString() }))),
+
+                recordCard('Most Wins', '✅',
+                    [...wrestlers].sort((a, b) => b.wins - a.wins).slice(0, 10)
+                        .map(w => ({ ...w, display: w.wins.toLocaleString() }))),
+
+                recordCard('Best Win Rate (50+ matches)', '🎯',
+                    withMatches.filter(w => w.totalMatches >= 50).sort((a, b) => b.winPct - a.winPct).slice(0, 10)
+                        .map(w => ({ ...w, display: Math.round(w.winPct) + '%' }))),
+
+                recordCard('Lowest ELO', '📉',
+                    [...sorted].reverse().slice(0, 10).map(w => ({ ...w, display: Math.round(w.elo).toString() }))),
+
+                recordCard('Most Losses', '💀',
+                    [...wrestlers].sort((a, b) => b.losses - a.losses).slice(0, 10)
+                        .map(w => ({ ...w, display: w.losses.toLocaleString() }))),
+
+                recordCard('Most Draws', '🤝',
+                    [...wrestlers].sort((a, b) => b.draws - a.draws).slice(0, 10)
+                        .map(w => ({ ...w, display: w.draws.toLocaleString() }))),
+
+                recordCard('Worst Win Rate (50+ matches)', '😬',
+                    withMatches.filter(w => w.totalMatches >= 50).sort((a, b) => a.winPct - b.winPct).slice(0, 10)
+                        .map(w => ({ ...w, display: Math.round(w.winPct) + '%' }))),
+            ].join('');
+
+            // Load server-side computed records (streaks, finish types) — global top 10, cached server-side
+            loadServerRecords(records);
+
+            // Tier distribution bars
+            const tierCounts = {};
+            tierDefs.forEach(t => tierCounts[t.name] = 0);
+            sorted.forEach((w, i) => {
+                const tier = getTierByRank(i + 1, total);
+                tierCounts[tier]++;
+            });
+
+            document.getElementById('tierBars').innerHTML = tierDefs.map(t => {
+                const count = tierCounts[t.name];
+                const pctWidth = (count / total) * 100;
+                return `
+                    <div class="tier-bar">
+                        <span class="label">${t.icon} ${t.name}</span>
+                        <div class="bar">
+                            <div class="fill" style="width: ${Math.max(pctWidth, 3)}%; background: ${t.color}20; border: 1px solid ${t.color};">
+                                ${count}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        let serverRecordVersion = 0;
+        let serverRecordsCached = null;
+
+        async function loadServerRecords(recordsEl) {
+            const myVersion = ++serverRecordVersion;
+            try {
+                // Use cached response if we already have it (server caches too, but skip the fetch entirely)
+                if (serverRecordsCached) {
+                    renderServerRecords(serverRecordsCached, recordsEl, myVersion);
+                    return;
+                }
+                const data = await (await fetch('/api/stats/records')).json();
+                serverRecordsCached = data;
+                renderServerRecords(data, recordsEl, myVersion);
+            } catch (e) {
+                console.error('Failed to load server records:', e);
+            }
+        }
+
+        function renderServerRecords(data, recordsEl, version) {
+
+                // Stale response — a newer filter change already fired
+                if (version !== serverRecordVersion) return;
+
+                // Remove any previously appended server cards
+                recordsEl.querySelectorAll('.server-record').forEach(el => el.remove());
+
+                const serverCards = [];
+                const cardData = [
+                    ['Longest Win Streak', '🔥', data.longest_win_streak, e => e.streak + ' wins'],
+                    ['Longest Losing Streak', '💀', data.longest_lose_streak, e => e.streak + ' losses'],
+                    ['Most Title Matches', '🏆', data.most_title_matches, e => e.count.toString()],
+                    ['Most KO/TKO Wins', '💥', data.most_ko_wins, e => e.count.toString()],
+                    ['Most Losses by Count Out', '⏰', data.most_count_outs, e => e.count.toString()],
+                    ['Most DQ Wins', '🚫', data.most_dq_wins, e => e.count.toString()],
+                    ['Most DQ Losses', '🟥', data.most_dq_losses, e => e.count.toString()],
+                ];
+
+                for (const [title, icon, entries, displayFn] of cardData) {
+                    if (entries && entries.length > 0) {
+                        serverCards.push(`<div class="server-record">${recordCard(title, icon,
+                            entries.map(e => ({
+                                id: e.wrestler_id, name: e.name, promotion: e.promotion,
+                                display: displayFn(e)
+                            })))}</div>`);
+                    }
+                }
+
+                if (serverCards.length > 0) {
+                    recordsEl.insertAdjacentHTML('beforeend', serverCards.join(''));
+                }
+        }
+
+        loadStats();
+    </script>
+    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-burger.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

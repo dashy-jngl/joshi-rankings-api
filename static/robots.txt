@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /wrestler/0
+
+Sitemap: https://joshitori.com/sitemap.xml

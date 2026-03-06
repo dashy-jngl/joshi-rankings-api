@@ -31,7 +31,7 @@ Built with **Go** as a backend portfolio piece.
 
 ```bash
 # Clone
-git clone https://github.com/yourusername/joshi-rankings-api.git
+git clone https://github.com/dashy-jngl/joshi-rankings-api.git
 cd joshi-rankings-api
 
 # Install dependencies

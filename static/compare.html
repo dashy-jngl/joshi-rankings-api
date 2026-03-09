@@ -70,6 +70,35 @@
             font-size: 1rem;
         }
         .selected-tag .remove:hover { opacity: 1; }
+        .selected-tag .color-swatch {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid rgba(255,255,255,0.3);
+            flex-shrink: 0;
+        }
+        .selected-tag .color-swatch:hover { border-color: rgba(255,255,255,0.7); }
+        .color-picker-pop {
+            position: absolute;
+            z-index: 20;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            width: 160px;
+        }
+        .color-picker-pop .cp-opt {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .color-picker-pop .cp-opt:hover { border-color: #fff; }
         .chart-container { height: 400px; }
         .compare-stats {
             display: grid;
@@ -143,22 +172,25 @@
     </div>
 
     <script>
-        const chartColors = ['#e91e63', '#2196f3', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#ff5722', '#8bc34a'];
+        const defaultColors = ['#e91e63', '#2196f3', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#ff5722', '#8bc34a'];
+        const colorPalette = ['#e91e63', '#2196f3', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#ff5722', '#8bc34a', '#f44336', '#ffeb3b', '#ff4081', '#69f0ae', '#40c4ff', '#ea80fc', '#ffffff', '#b0bec5'];
+        let wrestlerColors = {}; // wrestler id -> color
         let allWrestlers = [];
         let selected = [];
         let compareChart = null;
 
         async function init() {
-            allWrestlers = await fetch('/api/wrestlers').then(r => r.json());
+            allWrestlers = await fetch('/api/wrestler-slim').then(r => r.json());
 
             // Check URL params for pre-selected wrestlers
             const params = new URLSearchParams(window.location.search);
             const ids = params.get('ids');
             if (ids) {
-                ids.split(',').forEach(id => {
-                    const w = allWrestlers.find(w => w.id === parseInt(id));
-                    if (w) addWrestler(w);
-                });
+                const fullPromises = ids.split(',').map(id =>
+                    fetch(`/api/wrestlers/${id}`).then(r => r.ok ? r.json() : null)
+                );
+                const results = await Promise.all(fullPromises);
+                results.forEach(w => { if (w) addWrestlerFull(w); });
             }
 
             // Close search on click outside
@@ -206,10 +238,21 @@
             results.classList.add('active');
         }
 
-        function addWrestler(w) {
+        // Called from search results — slim data, fetch full then add
+        async function addWrestler(w) {
             if (selected.length >= 8) return;
             if (selected.find(s => s.id === w.id)) return;
 
+            const full = await fetch(`/api/wrestlers/${w.id}`).then(r => r.json());
+            addWrestlerFull(full);
+        }
+
+        // Called with full wrestler data (from URL params or after fetch)
+        function addWrestlerFull(w) {
+            if (selected.length >= 8) return;
+            if (selected.find(s => s.id === w.id)) return;
+
+            wrestlerColors[w.id] = defaultColors[selected.length % defaultColors.length];
             selected.push(w);
             document.getElementById('addWrestler').value = '';
             document.getElementById('searchResults').classList.remove('active');
@@ -219,6 +262,7 @@
         }
 
         function removeWrestler(id) {
+            delete wrestlerColors[id];
             selected = selected.filter(w => w.id !== id);
             renderSelected();
             renderCompareStats();
@@ -234,13 +278,39 @@
         function renderSelected() {
             const el = document.getElementById('selectedWrestlers');
             el.innerHTML = selected.map((w, i) => `
-                <span class="selected-tag">
-                    <span class="color-dot" style="background: ${chartColors[i]}"></span>
+                <span class="selected-tag" style="position:relative;">
+                    <span class="color-swatch" style="background: ${wrestlerColors[w.id]}" onclick="toggleColorPicker(event, ${w.id})"></span>
                     ${w.name} (${Math.round(w.elo)})
                     <span class="remove" onclick="removeWrestler(${w.id})">✕</span>
                 </span>
             `).join('');
             updateChart();
+        }
+
+        function toggleColorPicker(e, wrestlerId) {
+            e.stopPropagation();
+            const existing = document.getElementById('colorPicker');
+            if (existing) { existing.remove(); return; }
+
+            const pop = document.createElement('div');
+            pop.id = 'colorPicker';
+            pop.className = 'color-picker-pop';
+            pop.innerHTML = colorPalette.map(c => `
+                <div class="cp-opt" style="background:${c};" onclick="pickColor(event, ${wrestlerId}, '${c}')"></div>
+            `).join('');
+            e.target.closest('.selected-tag').appendChild(pop);
+
+            const close = (ev) => { if (!ev.target.closest('.color-picker-pop')) { pop.remove(); document.removeEventListener('click', close); } };
+            setTimeout(() => document.addEventListener('click', close), 0);
+        }
+
+        function pickColor(e, wrestlerId, color) {
+            e.stopPropagation();
+            wrestlerColors[wrestlerId] = color;
+            const picker = document.getElementById('colorPicker');
+            if (picker) picker.remove();
+            renderSelected();
+            renderCompareStats();
         }
 
         let chartMode = 'timeline'; // 'timeline' or 'career'
@@ -323,7 +393,7 @@
                 return {
                     label: w.name,
                     data: data.map(h => ({ x: h.match_date, y: Math.round(h.elo) })),
-                    borderColor: chartColors[i],
+                    borderColor: wrestlerColors[w.id],
                     backgroundColor: 'transparent',
                     tension: 0.2,
                     pointRadius: 0,
@@ -358,7 +428,7 @@
                 return {
                     label: w.name,
                     data: data.map(h => Math.round(h.elo)),
-                    borderColor: chartColors[i],
+                    borderColor: wrestlerColors[w.id],
                     backgroundColor: 'transparent',
                     tension: 0.2,
                     pointRadius: 0,
@@ -402,7 +472,7 @@
                 const totalMatches = w.match_count || (w.wins + w.losses + w.draws);
                 const winPct = totalMatches > 0 ? Math.round((w.wins / totalMatches) * 100) : 0;
                 const rank = sorted.findIndex(s => s.id === w.id) + 1;
-                return { ...w, totalMatches, winPct, rank, color: chartColors[i] };
+                return { ...w, totalMatches, winPct, rank, color: wrestlerColors[w.id] };
             });
 
             el.innerHTML = `

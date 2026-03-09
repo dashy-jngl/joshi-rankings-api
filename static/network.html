@@ -376,7 +376,7 @@
 
         searchDebounce = setTimeout(async () => {
             if (!allWrestlers) {
-                const res = await fetch('/api/wrestlers');
+                const res = await fetch('/api/wrestler-slim');
                 allWrestlers = await res.json();
             }
             const ql = q.toLowerCase();
@@ -550,7 +550,7 @@
     // Populate promotion filter from wrestlers list
     async function loadPromoFilter() {
         if (!allWrestlers) {
-            const res = await fetch('/api/wrestlers');
+            const res = await fetch('/api/wrestler-slim');
             allWrestlers = await res.json();
         }
         const promos = [...new Set(allWrestlers.map(w => w.promotion).filter(Boolean))].sort();

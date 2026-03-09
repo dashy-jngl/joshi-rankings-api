@@ -658,7 +658,7 @@
         // Load wrestlers on page load
         async function loadWrestlers() {
             try {
-                const response = await fetch('/api/wrestlers');
+                const response = await fetch('/api/wrestler-slim');
                 allWrestlers = await response.json();
                 // Sort by ELO descending for better autocomplete
                 allWrestlers.sort((a, b) => b.elo - a.elo);

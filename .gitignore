@@ -1,13 +1,11 @@
 # Database
-*.db
-*.db-shm
-*.db-wal
-*.db.bak
-*conflicted copy*
+joshi.db
 
-# Binaries
+# Wrestler images
+static/images/wrestlers/
+
+# Binary
 joshi-rankings-api
-joshi-server
 
 # IDE
 .idea/
@@ -24,13 +22,3 @@ Thumbs.db
 
 # Test coverage
 coverage.out
-
-# Logs
-*.log
-
-# Security reviews (keep private)
-SECURITY-REVIEW*.md
-
-# Dev notes
-todo.md
-curls.md

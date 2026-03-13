@@ -2325,7 +2325,9 @@ func normalizeMatchType(cmType string) string {
 	}
 }
 
-// parseCagematchDate parses dates like "01.04.1998" or "April 1, 1998"
+// parseCagematchDate parses dates like "01.04.1998", "April 1, 1998",
+// or partial dates like "08.09." (day.month with unknown year).
+// Partial dates use year 1900 as a sentinel to preserve the month/day.
 func parseCagematchDate(s string) time.Time {
 	s = strings.TrimSpace(s)
 
@@ -2337,6 +2339,13 @@ func parseCagematchDate(s string) time.Time {
 	// Try "January 2, 2006" format
 	if t, err := time.Parse("January 2, 2006", s); err == nil {
 		return t
+	}
+
+	// Try DD.MM. format (day and month known, year unknown)
+	// Use 1900 as sentinel year to distinguish from zero time
+	cleaned := strings.TrimRight(s, ".")
+	if t, err := time.Parse("02.01", cleaned); err == nil {
+		return time.Date(1900, t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 	}
 
 	// Try year only

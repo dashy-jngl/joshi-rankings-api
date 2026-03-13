@@ -2,10 +2,14 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,6 +49,18 @@ var (
 	testScrapeResults   []gin.H
 	testValidateResults []gin.H
 	testMu              sync.Mutex
+)
+
+// PFP update state
+var (
+	pfpMu        sync.Mutex
+	pfpRunning   bool
+	pfpTotal     int
+	pfpProcessed int
+	pfpSuccess   int
+	pfpClosed    int
+	pfpFailed    int
+	pfpLog       []gin.H
 )
 
 func main() {
@@ -237,6 +253,10 @@ func main() {
 			protected.POST("/scraper/test-validate", handleTestValidate(cm, db))
 			protected.GET("/scraper/test-scrape/results", handleTestScrapeResults())
 			protected.GET("/scraper/test-validate/results", handleTestValidateResults())
+
+			// PFP update from Twitter
+			protected.POST("/scraper/pfp-update", handlePfpUpdate(db))
+			protected.GET("/scraper/pfp-update/status", handlePfpUpdateStatus())
 		}
 	}
 
@@ -895,5 +915,223 @@ func handleTestValidateResults() gin.HandlerFunc {
 		testMu.Lock()
 		defer testMu.Unlock()
 		c.JSON(http.StatusOK, gin.H{"results": testValidateResults})
+	}
+}
+
+// --- PFP Update from Twitter ---
+
+var screenNameRe = regexp.MustCompile(`(?:twitter\.com|x\.com)/([A-Za-z0-9_]+)`)
+
+func extractScreenName(url string) string {
+	m := screenNameRe.FindStringSubmatch(url)
+	if m == nil {
+		return ""
+	}
+	name := m[1]
+	lower := strings.ToLower(name)
+	if lower == "intent" || lower == "i" || lower == "search" || lower == "hashtag" || lower == "home" {
+		return ""
+	}
+	return name
+}
+
+func fetchTwitterProfileImage(screenName string) (string, error) {
+	url := fmt.Sprintf("https://api.fxtwitter.com/%s", screenName)
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 404 || resp.StatusCode == 410 {
+		return "", fmt.Errorf("account closed/suspended (HTTP %d)", resp.StatusCode)
+	}
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read body: %w", err)
+	}
+
+	// Extract avatar_url from fxtwitter JSON response
+	re := regexp.MustCompile(`"avatar_url":"([^"]+)"`)
+	match := re.FindStringSubmatch(string(body))
+	if match == nil {
+		return "", fmt.Errorf("no avatar found (account may be closed)")
+	}
+
+	imageURL := strings.Replace(match[1], "_normal.", "_400x400.", 1)
+	return imageURL, nil
+}
+
+func downloadWrestlerImage(imageURL string, wrestlerID int) (string, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(imageURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	ext := ".jpg"
+	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "png") {
+		ext = ".png"
+	} else if strings.Contains(ct, "webp") {
+		ext = ".webp"
+	}
+
+	filename := fmt.Sprintf("%d%s", wrestlerID, ext)
+	diskPath := filepath.Join("static", "images", "wrestlers", filename)
+	os.MkdirAll(filepath.Dir(diskPath), 0755)
+
+	f, err := os.Create(diskPath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return "", err
+	}
+
+	return "/static/images/wrestlers/" + filename, nil
+}
+
+func handlePfpUpdate(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		pfpMu.Lock()
+		if pfpRunning {
+			pfpMu.Unlock()
+			c.JSON(http.StatusConflict, gin.H{"error": "PFP update already running"})
+			return
+		}
+		pfpRunning = true
+		pfpTotal = 0
+		pfpProcessed = 0
+		pfpSuccess = 0
+		pfpClosed = 0
+		pfpFailed = 0
+		pfpLog = nil
+		pfpMu.Unlock()
+
+		// Find candidates: wrestlers without images who have twitter links
+		type candidate struct {
+			WrestlerID int
+			Name       string
+			TwitterURL string
+		}
+		var candidates []candidate
+		db.Raw(`
+			SELECT w.id as wrestler_id, w.name, s.url as twitter_url
+			FROM wrestlers w
+			JOIN socials s ON s.wrestler_id = w.id AND s.name = 'twitter'
+			WHERE (w.image_url IS NULL OR w.image_url = '')
+			  AND (w.image_local IS NULL OR w.image_local = '')
+			ORDER BY w.id
+		`).Scan(&candidates)
+
+		pfpMu.Lock()
+		pfpTotal = len(candidates)
+		pfpMu.Unlock()
+
+		username, _ := c.Get("username")
+		log.Printf("[pfp] %s started PFP update — %d candidates", username, len(candidates))
+
+		c.JSON(http.StatusOK, gin.H{
+			"message":    fmt.Sprintf("PFP update started — %d wrestlers to process", len(candidates)),
+			"candidates": len(candidates),
+		})
+
+		// Run in background
+		go func() {
+			defer func() {
+				pfpMu.Lock()
+				pfpRunning = false
+				pfpMu.Unlock()
+				log.Printf("[pfp] Complete — success: %d, closed: %d, failed: %d", pfpSuccess, pfpClosed, pfpFailed)
+			}()
+
+			for _, cand := range candidates {
+				sn := extractScreenName(cand.TwitterURL)
+				if sn == "" {
+					pfpMu.Lock()
+					pfpProcessed++
+					pfpFailed++
+					pfpLog = append(pfpLog, gin.H{"name": cand.Name, "status": "skip", "detail": "bad twitter URL"})
+					pfpMu.Unlock()
+					continue
+				}
+
+				imageURL, err := fetchTwitterProfileImage(sn)
+				if err != nil {
+					errStr := err.Error()
+					pfpMu.Lock()
+					pfpProcessed++
+					if strings.Contains(errStr, "closed") || strings.Contains(errStr, "suspended") || strings.Contains(errStr, "HTTP 4") {
+						pfpClosed++
+						pfpLog = append(pfpLog, gin.H{"name": cand.Name, "status": "closed", "detail": "@" + sn})
+					} else {
+						pfpFailed++
+						pfpLog = append(pfpLog, gin.H{"name": cand.Name, "status": "error", "detail": errStr})
+					}
+					pfpMu.Unlock()
+					time.Sleep(500 * time.Millisecond)
+					continue
+				}
+
+				localPath, err := downloadWrestlerImage(imageURL, cand.WrestlerID)
+				if err != nil {
+					pfpMu.Lock()
+					pfpProcessed++
+					pfpFailed++
+					pfpLog = append(pfpLog, gin.H{"name": cand.Name, "status": "error", "detail": "download: " + err.Error()})
+					pfpMu.Unlock()
+					time.Sleep(500 * time.Millisecond)
+					continue
+				}
+
+				db.Model(&models.Wrestler{}).Where("id = ?", cand.WrestlerID).Updates(map[string]interface{}{
+					"image_url":   imageURL,
+					"image_local": localPath,
+				})
+
+				pfpMu.Lock()
+				pfpProcessed++
+				pfpSuccess++
+				pfpLog = append(pfpLog, gin.H{"name": cand.Name, "status": "ok", "detail": "@" + sn + " → " + localPath})
+				pfpMu.Unlock()
+
+				time.Sleep(1 * time.Second)
+			}
+		}()
+	}
+}
+
+func handlePfpUpdateStatus() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		pfpMu.Lock()
+		defer pfpMu.Unlock()
+
+		// Return last 50 log entries
+		logSlice := pfpLog
+		if len(logSlice) > 50 {
+			logSlice = logSlice[len(logSlice)-50:]
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"running":   pfpRunning,
+			"total":     pfpTotal,
+			"processed": pfpProcessed,
+			"success":   pfpSuccess,
+			"closed":    pfpClosed,
+			"failed":    pfpFailed,
+			"log":       logSlice,
+		})
 	}
 }

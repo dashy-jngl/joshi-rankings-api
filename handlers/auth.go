@@ -151,6 +151,9 @@ func Setup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Check user count BEFORE binding so the probe from auth.js
+		// (which sends empty body) gets "Setup already completed"
+		// instead of a validation error.
 		var count int64
 		db.Model(&models.User{}).Count(&count)
 		if count > 0 {

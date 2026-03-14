@@ -215,7 +215,7 @@ a:hover { color: var(--accent-hover); }
 /* === Stats Bar === */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
     gap: 12px;
     margin-bottom: 24px;
 }
@@ -223,7 +223,7 @@ a:hover { color: var(--accent-hover); }
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 16px;
+    padding: 8px;
     text-align: center;
 }
 .stat-card .value {

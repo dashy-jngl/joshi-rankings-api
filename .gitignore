@@ -1,11 +1,14 @@
 # Database
 joshi.db
+joshi.db-shm
+joshi.db-wal
 
 # Wrestler images
 static/images/wrestlers/
 
 # Binary
 joshi-rankings-api
+joshitori
 
 # IDE
 .idea/

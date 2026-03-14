@@ -592,6 +592,38 @@ func GetWrestlerStats(db *gorm.DB) gin.HandlerFunc {
 			LIMIT 5
 		`, id, id).Scan(&allOpponents)
 
+		// Peak ELO — highest ELO ever achieved and when
+		type peakELO struct {
+			ELO       float64   `json:"elo"`
+			MatchDate time.Time `json:"match_date"`
+		}
+		var peak peakELO
+		db.Raw(`
+			SELECT elo, match_date FROM elo_histories
+			WHERE wrestler_id = ?
+			ORDER BY elo DESC
+			LIMIT 1
+		`, id).Scan(&peak)
+
+		// Peak rank — what rank were they at their peak ELO?
+		// Count how many wrestlers had a higher ELO at that point in time
+		peakRank := 0
+		if peak.ELO > 0 {
+			// Find wrestlers who had an ELO higher than this wrestler's peak
+			// at or before the peak date, using their most recent ELO as of that date
+			db.Raw(`
+				SELECT COUNT(DISTINCT eh.wrestler_id) + 1
+				FROM (
+					SELECT wrestler_id, MAX(match_date) as max_date
+					FROM elo_histories
+					WHERE match_date <= ?
+					GROUP BY wrestler_id
+				) latest
+				JOIN elo_histories eh ON eh.wrestler_id = latest.wrestler_id AND eh.match_date = latest.max_date
+				WHERE eh.elo > ? AND eh.wrestler_id != ?
+			`, peak.MatchDate, peak.ELO, id).Scan(&peakRank)
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"longest_win_streak":  longestWin,
 			"longest_loss_streak": longestLoss,
@@ -599,6 +631,9 @@ func GetWrestlerStats(db *gorm.DB) gin.HandlerFunc {
 			"current_loss_streak": currentLoss,
 			"top_singles_opponents": singlesOpponents,
 			"top_all_opponents":     allOpponents,
+			"peak_elo":            peak.ELO,
+			"peak_elo_date":       peak.MatchDate,
+			"peak_rank":           peakRank,
 		})
 	}
 }

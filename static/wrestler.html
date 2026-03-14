@@ -38,6 +38,7 @@
         let eloChart = null;
         let eloFullData = []; // unsampled for range filtering
         let allMatches = [];
+        let sortedWrestlers = [];
         let currentWrestlerID = null;
 
         function getWrestlerID() {
@@ -53,6 +54,18 @@
 
         function tierClass(tier) {
             return 'tier-' + tier.toLowerCase().replace(/\s+/g, '-').replace(/\d+/g, '').replace(/-$/, '');
+        }
+
+        const tierColors = {
+            'jotei': '#ffd700', 'ace': '#ffa500', 'senshi': '#e91e63',
+            'estrella': '#64b5f6', 'kyusei': '#64b5f6',
+            'young-lioness': '#81c784', 'seedling': '#888',
+            'main-eventer': '#e91e63', 'mid-carder': '#64b5f6',
+            'young-lion': '#81c784', 'rookie': '#888'
+        };
+        function tierColor(tier) {
+            const key = tier.toLowerCase().replace(/\s+/g, '-').replace(/\d+/g, '').replace(/-$/, '');
+            return tierColors[key] || 'var(--accent)';
         }
 
         let tierDefs = [];
@@ -151,6 +164,7 @@
                 allMatches = matchesResp || [];
 
                 const sorted = [...allWrestlers].sort((a, b) => b.elo - a.elo);
+                sortedWrestlers = sorted;
                 const rank = sorted.findIndex(w => w.id === wrestler.id) + 1;
                 const { tier, icon } = getTier(rank, sorted.length);
                 const totalMatches = wrestler.wins + wrestler.losses + wrestler.draws;
@@ -198,7 +212,7 @@
                             </div>
                         </div>
                         <div>
-                            <div class="profile-elo ${eloClass(wrestler.elo)}">${Math.round(wrestler.elo)}</div>
+                            <div class="profile-elo" style="color:${tierColor(tier)};">${Math.round(wrestler.elo)}</div>
                             <div class="profile-tier"><span class="tier-badge ${tierClass(tier)}">${icon} ${tier}</span></div>
                         </div>
                     </div>
@@ -214,8 +228,10 @@
                         <div class="stat-card"><div class="value">${wrestler.draws}</div><div class="label">Draws</div></div>
                         <div class="stat-card"><div class="value">${winPct}%</div><div class="label">Win Rate</div></div>
                         <div class="stat-card"><div class="value">${totalMatches.toLocaleString()}</div><div class="label">Total Matches</div></div>
+                        <div class="stat-card" id="peakEloCard"><div class="value" style="color: var(--text-muted);">—</div><div class="label">Peak ELO</div></div>
+                        <div class="stat-card" id="peakRankCard"><div class="value" style="color: var(--text-muted);">—</div><div class="label">Peak Rank</div></div>
+                        <div class="stat-card"><div class="value" style="color:${tierColor(tier)};font-weight:700;">#${rank}</div><div class="label">Rank</div></div>
                         <div class="stat-card"><div class="value" style="color: ${momentumColor(wrestler.momentum || 0)};">${momentumDisplay(wrestler.momentum || 0)}</div><div class="label">Momentum</div></div>
-                        <div class="stat-card"><div class="value">#${rank}</div><div class="label">Rank</div></div>
                     </div>
 
                     <div class="profile-grid">
@@ -432,6 +448,16 @@
                 section.style.display = 'block';
 
                 // Streaks card
+                const peakDate = stats.peak_elo_date ? new Date(stats.peak_elo_date).toLocaleDateString('en-AU', {day:'2-digit', month:'short', year:'numeric'}) : '—';
+                const peakElo = stats.peak_elo ? Math.round(stats.peak_elo) : '—';
+                const peakRank = stats.peak_rank ? `#${stats.peak_rank}` : '—';
+
+                // Populate peak stat cards — color based on peak rank tier
+                const peakTier = getTier(stats.peak_rank || 999, sortedWrestlers.length);
+                const peakColor = tierColor(peakTier.tier);
+                document.getElementById('peakEloCard').innerHTML = `<div class="value" style="color:${peakColor};font-weight:700;">${peakElo}</div><div class="label">Peak ELO</div><div class="label">${peakDate}</div>`;
+                document.getElementById('peakRankCard').innerHTML = `<div class="value" style="color:${peakColor};font-weight:700;">${peakRank}</div><div class="label">Peak Rank</div><div class="label">${peakDate}</div>`;
+
                 document.getElementById('streaksCard').innerHTML = `
                     <h3 style="color: var(--accent); margin-bottom: 12px;">📊 Streaks</h3>
                     <div class="info-row"><span class="info-label">Longest Win Streak</span><span class="info-value" style="color:var(--green);font-weight:700;">${stats.longest_win_streak}</span></div>

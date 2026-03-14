@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"joshi-rankings-api/models"
+	"joshi-rankings-api/tasklog"
 	"joshi-rankings-api/services"
 )
 
@@ -189,6 +190,7 @@ func (p *Processor) RecalculateAllELO() error {
 		return result.Error
 	}
 	log.Printf("[elo] Reset %d wrestlers to ELO %.0f", result.RowsAffected, services.StartingELO)
+	tasklog.Infof("Reset %d wrestlers to ELO %.0f", result.RowsAffected, services.StartingELO)
 
 	// Step 2: Clear all ELO and momentum history
 	p.db.Where("1 = 1").Delete(&models.ELOHistory{})
@@ -199,6 +201,7 @@ func (p *Processor) RecalculateAllELO() error {
 	var matches []models.Match
 	p.db.Order("date ASC, id ASC").Find(&matches)
 	log.Printf("[elo] Loaded %d matches, now loading participants...", len(matches))
+	tasklog.Infof("Loaded %d matches, loading participants...", len(matches))
 
 	// Load participants in batches (Preload chokes on 400k+ matches)
 	// Build a map of matchID → []MatchParticipant
@@ -268,6 +271,7 @@ func (p *Processor) RecalculateAllELO() error {
 		// Progress log every 10000 matches
 		if (i+1)%10000 == 0 {
 			log.Printf("[elo] Processed %d/%d matches", i+1, len(matches))
+			tasklog.Infof("Processed %d/%d matches", i+1, len(matches))
 		}
 	}
 
@@ -338,6 +342,7 @@ func (p *Processor) RecalculateAllELO() error {
 	}
 
 	log.Printf("[elo] Recalculation complete! Processed %d matches for %d wrestlers", len(matches), len(elos))
+	tasklog.Successf("Recalculation complete! Processed %d matches for %d wrestlers", len(matches), len(elos))
 
 	// Re-assign current promotions using tiered logic
 	p.UpdateAllPromotions()
@@ -907,6 +912,48 @@ func (p *Processor) findExistingMatch(raw RawMatch) uint {
 		var match models.Match
 		if p.db.Where("match_key = ?", key).First(&match).Error == nil {
 			return match.ID
+		}
+	}
+
+	// Secondary dedup: no-time variant.
+	// Cagematch often adds match_time after initial upload. If we stored a match
+	// before the time was added, the key won't match. Check for a key that
+	// matches without time, and if found, upgrade the stored key.
+	keyNoTime := BuildMatchKeyNoTime(raw)
+	if keyNoTime != "" && raw.MatchTime != "" {
+		var match models.Match
+		// cm: format no-time key ends with | (empty time)
+		oldKey := keyNoTime + "|"
+		if p.db.Where("match_key = ?", oldKey).First(&match).Error == nil {
+			p.db.Model(&match).Update("match_key", key)
+			if match.MatchTime == "" {
+				p.db.Model(&match).Update("match_time", raw.MatchTime)
+			}
+			return match.ID
+		}
+	}
+
+	// Tertiary dedup: match old-format keys (date|event|type|participants|time)
+	// against new cm: format. Catches matches stored before we switched to cm: keys.
+	if raw.CagematchEventID > 0 {
+		pids := sortedParticipantIDs(raw)
+		// Search by event ID + check participants match
+		var candidates []models.Match
+		p.db.Where("cagematch_event_id = ? AND match_key NOT LIKE 'cm:%'",
+			raw.CagematchEventID).Find(&candidates)
+		for _, m := range candidates {
+			// Check if participants match by comparing sorted IDs from the old key
+			if strings.Contains(m.MatchKey, pids) {
+				// Upgrade to new key format
+				p.db.Model(&m).Update("match_key", key)
+				if raw.MatchTime != "" && m.MatchTime == "" {
+					p.db.Model(&m).Update("match_time", raw.MatchTime)
+				}
+				if raw.EventName != "" && raw.EventName != m.EventName {
+					p.db.Model(&m).Update("event_name", raw.EventName)
+				}
+				return m.ID
+			}
 		}
 	}
 

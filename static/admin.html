@@ -494,12 +494,40 @@
             } catch (e) {}
         }
 
+        let taskLogPoller = null;
+
+        function startTaskLogPolling() {
+            let since = 0;
+            if (taskLogPoller) clearInterval(taskLogPoller);
+            taskLogPoller = setInterval(async () => {
+                try {
+                    const data = await api('GET', `/api/tasklog?since=${since}`, true);
+                    if (data.entries && data.entries.length > 0) {
+                        for (const entry of data.entries) {
+                            addLog(entry.message, entry.type);
+                        }
+                    }
+                    since = data.next || since;
+                    // Stop polling if last entry is success or error
+                    if (data.entries && data.entries.length > 0) {
+                        const last = data.entries[data.entries.length - 1];
+                        if (last.type === 'success' || last.type === 'error') {
+                            clearInterval(taskLogPoller);
+                            taskLogPoller = null;
+                        }
+                    }
+                } catch (e) {
+                    // silently ignore polling errors
+                }
+            }, 2000);
+        }
+
         async function runRecalculate() {
             if (!confirm('This will reset ALL ELO ratings and recalculate from scratch. Continue?')) return;
             addLog('Starting ELO recalculation...', 'info');
             try {
                 const data = await api('POST', '/api/scraper/recalculate', true);
-                addLog(data.message, 'success');
+                startTaskLogPolling();
             } catch (e) {}
         }
 

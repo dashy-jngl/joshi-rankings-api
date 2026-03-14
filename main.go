@@ -23,6 +23,7 @@ import (
 	"joshi-rankings-api/middleware"
 	"joshi-rankings-api/models"
 	"joshi-rankings-api/scraper"
+	"joshi-rankings-api/tasklog"
 )
 
 // Scraper state — track status and control the cron
@@ -152,6 +153,7 @@ func main() {
 	api := r.Group("/api")
 	{
 		// Public
+		api.GET("/tasklog", handleTaskLog())
 		api.GET("/wrestlers", handlers.GetWrestlers(db))
 		api.GET("/wrestler-names", handlers.GetWrestlerNames(db))
 		api.GET("/wrestler-slim", handlers.GetWrestlerSlim(db))
@@ -246,6 +248,7 @@ func main() {
 			protected.POST("/scraper/run/matches", handleRunMatchScrape(cm, proc))
 			protected.POST("/scraper/run/profiles", handleRunProfileRefresh(cm, proc))
 			protected.GET("/scraper/status", handleScraperStatus(cm))
+			// tasklog moved to public api group
 
 			// Test scrape endpoints
 			protected.POST("/scraper/test-clear", handleTestClear(db))
@@ -477,15 +480,37 @@ func handleValidate(cm *scraper.CagematchScraper, proc *scraper.Processor) gin.H
 
 func handleRecalculate(proc *scraper.Processor) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		tasklog.Clear()
+		tasklog.Info("ELO recalculation starting...")
+
 		go func() {
 			if err := proc.RecalculateAllELO(); err != nil {
+				tasklog.Errorf("ELO recalculation error: %v", err)
 				log.Printf("🕷️ ELO recalculation error: %v", err)
+			} else {
+				tasklog.Success("ELO recalculation complete!")
 			}
 			handlers.InvalidateRecordsCache()
 		}()
 
 		c.JSON(http.StatusAccepted, gin.H{
-			"message": "ELO recalculation started — check logs for progress",
+			"message": "ELO recalculation started",
+		})
+	}
+}
+
+// GET /api/tasklog?since=N
+// Returns task log entries since index N. Poll this for live progress.
+func handleTaskLog() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		since := 0
+		if s := c.Query("since"); s != "" {
+			fmt.Sscanf(s, "%d", &since)
+		}
+		entries, next := tasklog.GetSince(since)
+		c.JSON(http.StatusOK, gin.H{
+			"entries": entries,
+			"next":    next,
 		})
 	}
 }

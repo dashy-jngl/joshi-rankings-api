@@ -1,0 +1,5 @@
+# Override GitHub language detection — this is a Go project
+static/*.html linguist-vendored
+static/**/*.html linguist-vendored
+static/**/*.css linguist-vendored
+static/**/*.js linguist-vendored

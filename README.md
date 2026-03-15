@@ -1,159 +1,103 @@
-# 🏆 Joshi Power Rankings API
+# 🏆 Joshitori — Power Rankings for Joshi Pro Wrestling
 
-A REST API that tracks joshi (women's) pro wrestling match results and calculates dynamic power rankings using an ELO rating system.
+**[joshitori.com](https://joshitori.com)** · *hoshitori for joshi*
 
-Built with **Go** as a backend portfolio piece.
+A full-stack ranking system for women's professional wrestling, tracking **3,800+ wrestlers** across **250k+ matches** with dynamic ELO ratings, automated web crawling, and a real-time admin dashboard.
 
 ![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white)
+![Hetzner](https://img.shields.io/badge/Hetzner-D50C2D?style=flat&logo=hetzner&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-## Features
+## What It Does
 
-- 🤼‍♀️ **Wrestler database** with promotion tracking
-- 📊 **ELO rating system** with title match bonuses
-- 🕷️ **Auto-scraper** fetches results from official promotion sites (Stardom, TJPW, Marvelous)
-- ⚡ **Concurrent scraping** using goroutines + fan-out pattern
-- 🔍 **Fuzzy name matching** with alias support for Japanese/English names
-- 📈 **Power rankings** — global or per-promotion
+Joshitori crawls match results from [Cagematch](https://www.cagematch.net), processes them through a custom ELO system, and produces ranked power ratings for every active women's wrestler — from WWE to small indie promotions in Japan.
 
-## Tech Stack
+### Key Features
 
-| What | Why |
-|------|-----|
-| [Go](https://go.dev) | Fast, typed, great for APIs and concurrency |
-| [Gin](https://gin-gonic.com) | Most popular Go web framework |
-| [GORM](https://gorm.io) | Go ORM with SQLite + Postgres support |
-| [colly](http://go-colly.org) | Elegant Go scraping framework |
-| [SQLite](https://sqlite.org) | Zero-config embedded database |
+- **ELO Rating System** — asymmetric K-factor, dynamic adjustments for title matches, draws, and multi-person bouts. Percentile-based tiers from 🌱 Seedling to 👑 Jotei
+- **Automated Crawler** — scheduled Cagematch scraping with rate limiting, dedup via composite match keys, and graceful error handling
+- **Profile Enrichment** — scrapes wrestler bios (birthdays, height/weight, socials, signature moves) with partial date support
+- **PFP Fetcher** — bulk-fetches Twitter profile pictures via API for wrestlers without images
+- **Full Admin Panel** — scraper controls, user management, test scraping, match validation, live activity log
+- **REST API** — 40+ endpoints covering wrestlers, matches, rankings, ELO history, title reigns, promotions, head-to-head, network graphs, and match predictions
+- **Session Auth + CSRF Protection** — bcrypt passwords, secure cookies, origin validation
+- **Static Frontend** — responsive dark-theme UI with interactive charts (Chart.js), search, wrestler profiles, compare tool, and timeline explorer
 
-## Quick Start
+## Architecture
 
-```bash
-# Clone
-git clone https://github.com/yourusername/joshi-rankings-api.git
-cd joshi-rankings-api
-
-# Install dependencies
-go mod download
-
-# Run (auto-creates DB + seeds wrestlers)
-make run
-
-# Or with hot reload
-make dev
+```
+┌─────────────┐     ┌──────────────┐     ┌──────────┐
+│  Cagematch   │────▶│   Crawler    │────▶│  SQLite  │
+│  (source)    │     │  (Go, cron)  │     │  (WAL)   │
+└─────────────┘     └──────────────┘     └────┬─────┘
+                                              │
+┌─────────────┐     ┌──────────────┐          │
+│   Browser    │────▶│   Gin API    │◀─────────┘
+│              │◀────│  + Static    │
+└─────────────┘     └──────────────┘
 ```
 
-The API starts at `http://localhost:8080`.
-
-## API Endpoints
-
-### Wrestlers
-```bash
-# List all wrestlers
-curl http://localhost:8080/api/wrestlers
-
-# Filter by promotion
-curl http://localhost:8080/api/wrestlers?promotion=stardom
-
-# Get one wrestler
-curl http://localhost:8080/api/wrestlers/1
-
-# Add a wrestler
-curl -X POST http://localhost:8080/api/wrestlers \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Sareee", "promotion": "freelance"}'
-```
-
-### Matches
-```bash
-# Log a match result (triggers ELO recalc)
-curl -X POST http://localhost:8080/api/matches \
-  -H "Content-Type: application/json" \
-  -d '{
-    "winner_id": 6,
-    "loser_id": 4,
-    "match_type": "singles",
-    "event_name": "Stardom New Year Stars 2026",
-    "date": "2026-01-03T00:00:00Z",
-    "is_title_match": true
-  }'
-
-# List matches (optional wrestler filter)
-curl http://localhost:8080/api/matches?wrestler_id=6
-```
-
-### Rankings
-```bash
-# Global power rankings
-curl http://localhost:8080/api/rankings
-
-# Top 10
-curl http://localhost:8080/api/rankings?limit=10
-
-# By promotion
-curl http://localhost:8080/api/rankings?promotion=stardom
-```
-
-### Scraper
-```bash
-# Check scraper status
-curl http://localhost:8080/api/scraper/status
-
-# Trigger manual scrape
-curl -X POST http://localhost:8080/api/scraper/run
-
-# View scrape log
-curl http://localhost:8080/api/scraper/log
-```
-
-### Stats (stretch)
-```bash
-# ELO history for a wrestler
-curl http://localhost:8080/api/wrestlers/6/history
-
-# Head-to-head
-curl "http://localhost:8080/api/head-to-head?w1=6&w2=4"
-```
+Single binary deployment. SQLite with WAL mode handles concurrent reads/writes from the API and crawler simultaneously.
 
 ## ELO System
 
-| Parameter | Value |
-|-----------|-------|
-| Starting ELO | 1200 |
-| K-factor | 32 |
-| Title match multiplier | 1.5× |
+| Parameter | Detail |
+|-----------|--------|
+| Base K-factor | 32, scaled by match importance |
+| Loss penalty | 0.5× (asymmetric — losses hurt less) |
+| Draw handling | Capped penalty, never worse than a loss |
+| Title multiplier | Boosted K for championship matches |
+| Tiers | Percentile-based: Jotei → Ace → Senshi → Estrella → Young Lioness → Seedling |
 
-Upsets are naturally rewarded — beating a higher-rated wrestler gives a bigger ELO boost.
+## Match Deduplication
 
+Matches are deduplicated using deterministic composite keys: `date|event|match_type|sorted_participant_ids`. This handles the same match appearing on multiple wrestler profiles without double-counting.
+
+## Data Pipeline
+
+1. **Discovery** — crawler finds new wrestlers via promotion rosters and match participants
+2. **Match Collection** — scrapes match history per wrestler, deduplicates, stores with participant links
+3. **Profile Refresh** — periodic re-scrape of bios, socials, aliases, and promotion history
+4. **ELO Calculation** — processes all matches chronologically, generates rating history
+5. **Title Tracking** — scrapes title reign data per championship belt
+6. **Validation** — compares DB match counts against source to detect gaps
+
+## API Highlights
+
+```bash
+GET  /api/wrestlers              # All wrestlers (cached)
+GET  /api/wrestlers/:id          # Full profile with socials & aliases
+GET  /api/rankings               # Ranked list with tiers
+GET  /api/elo-history            # Multi-wrestler ELO chart data
+GET  /api/network/rivalries      # Most frequent opponent pairings
+POST /api/predict/match          # ELO-based match outcome prediction
+POST /api/predict/tournament     # Simulate tournament brackets
+GET  /api/titles/:id             # Title history with reign data
+GET  /api/scraper/status         # Crawler state + cron info
 ```
-Example: HATE (1400) beats Tam Nakano (1500)
-→ Expected outcome favoured Tam → HATE gets a big boost
-→ HATE: 1400 → ~1420
-→ Tam:  1500 → ~1480
+
+## Running Locally
+
+```bash
+git clone https://github.com/dashy-jngl/joshi-rankings-api.git
+cd joshi-rankings-api
+cp .env.example .env        # configure DB_PATH, ALLOWED_ORIGINS
+go run main.go              # starts on :8080
 ```
 
-## Project Structure
+Requires Go 1.21+ and CGO enabled (for SQLite).
 
-```
-joshi-rankings-api/
-├── main.go                 # Entry point, router, scraper startup
-├── handlers/               # HTTP handlers (wrestlers, matches, rankings)
-├── models/                 # Data models + DB methods
-├── services/               # ELO calculation, ranking generation
-├── scraper/                # Auto-scraper system (one file per promotion)
-├── database/               # DB connection + migrations
-├── middleware/              # CORS etc.
-├── seeds/                  # Seed data (wrestler JSON)
-└── docs/                   # API documentation
-```
+## Tech Stack
 
-## Design Decisions
-
-- **Interfaces everywhere** — `WrestlerStore` and `RankingCalculator` interfaces make it easy to swap SQLite for Postgres, or ELO for Glicko-2
-- **Concurrent scrapers** — each promotion is scraped in its own goroutine using the fan-out pattern
-- **Respectful scraping** — 3-second rate limit, proper User-Agent, official sources only
-- **Alias table** — handles Japanese ↔ English name variants for fuzzy matching
+| Component | Choice | Rationale |
+|-----------|--------|-----------|
+| Language | Go | Fast compilation, goroutines for concurrent crawling, single binary deploy |
+| Web Framework | Gin | Mature, middleware ecosystem, fast router |
+| ORM | GORM | Auto-migrations, raw SQL escape hatch when needed |
+| Database | SQLite (WAL) | Zero-ops, single-file backup, handles the read/write load fine |
+| Auth | bcrypt + secure cookies | Session-based with CSRF origin checks |
+| Hosting | Hetzner CX22 | €4/mo, 20TB traffic, fixed pricing |
 
 ## License
 
@@ -161,4 +105,4 @@ MIT
 
 ---
 
-*Built by Dashy 🇦🇺 — because joshi wrestling deserves better stats*
+*Built by [dashy-jngl](https://github.com/dashy-jngl) 🇦🇺*

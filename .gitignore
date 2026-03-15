@@ -2,6 +2,9 @@
 joshi.db
 joshi.db-shm
 joshi.db-wal
+*.db-shm
+*.db-wal
+test_scrape.db*
 
 # Wrestler images
 static/images/wrestlers/

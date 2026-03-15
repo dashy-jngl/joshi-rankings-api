@@ -28,13 +28,13 @@ Joshitori crawls match results from [Cagematch](https://www.cagematch.net), proc
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌──────────┐
-│  Cagematch   │────▶│   Crawler    │────▶│  SQLite  │
-│  (source)    │     │  (Go, cron)  │     │  (WAL)   │
+│  Cagematch  │───▶│   Crawler    │───▶│  SQLite  │
+│  (source)   │     │  (Go, cron)  │     │  (WAL)   │
 └─────────────┘     └──────────────┘     └────┬─────┘
                                               │
 ┌─────────────┐     ┌──────────────┐          │
-│   Browser    │────▶│   Gin API    │◀─────────┘
-│              │◀────│  + Static    │
+│   Browser   │───▶│   Gin API    │◀────────┘
+│             │◀───│  + Static    │
 └─────────────┘     └──────────────┘
 ```
 

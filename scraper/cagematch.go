@@ -3,6 +3,7 @@ package scraper
 import (
 	"encoding/base64"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -987,11 +988,46 @@ func (s *CagematchScraper) fetchPage(pageURL string) (*goquery.Document, error) 
 		}
 	}
 
+	// Cagematch injects anti-scraping noise into page text:
+	//   - zero-width characters mid-word ("St&#8203;ardom")
+	//   - hidden decoy elements with fake numbers ("Stardo<small style="display:none">9.85</small>m")
+	//   - empty hidden spans that split words ("202<span style="display:none"></span>6")
+	// Strip all of it here so every scrape path sees clean text.
+	body = stripInvisibleChars(body)
+
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("parsing HTML: %w", err)
 	}
+	removeHiddenElements(doc)
 	return doc, nil
+}
+
+// invisibleCharsRe matches zero-width/invisible Unicode characters in both raw
+// and HTML-entity form. Cagematch sprinkles these mid-word as scraper bait.
+// U+200B zero-width space, U+200C/U+200D zero-width (non-)joiner,
+// U+2060 word joiner, U+FEFF BOM/zero-width no-break space.
+var invisibleCharsRe = regexp.MustCompile(
+	`[\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}\x{00AD}]|&#(?:8203|8204|8205|8288|65279|173);|&#[xX](?:200[BbCcDd]|2060|[Ff][Ee][Ff][Ff]|[Aa][Dd]);|&ZeroWidthSpace;|&shy;`)
+
+// stripInvisibleChars removes zero-width/invisible characters from raw HTML.
+func stripInvisibleChars(body string) string {
+	return invisibleCharsRe.ReplaceAllString(body, "")
+}
+
+// hiddenStyleRe matches inline styles Cagematch uses to hide decoy elements.
+var hiddenStyleRe = regexp.MustCompile(`(?i)display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0\s*(?:;|$)`)
+
+// removeHiddenElements deletes elements hidden via inline CSS so their decoy
+// content (fake ratings like "9.85" spliced into event names) never reaches
+// .Text() extraction or the ghost-name parser.
+func removeHiddenElements(doc *goquery.Document) {
+	doc.Find("[style]").Each(func(i int, sel *goquery.Selection) {
+		style, _ := sel.Attr("style")
+		if hiddenStyleRe.MatchString(style) {
+			sel.Remove()
+		}
+	})
 }
 
 // fetchBody performs a single GET and returns the response body as a string.
@@ -2161,63 +2197,8 @@ func (s *CagematchScraper) parseMatchRows(doc *goquery.Document, matches *[]RawM
 		// These appear in old matches where some wrestlers don't have Cagematch profiles.
 		// We add them as ghost participants (CagematchID=0) so the match isn't dropped.
 		if len(participants) >= 1 {
-			// Get the full card text and try to find names that aren't linked
-			// Strategy: look for text nodes that contain names separated by defeat/vs/& keywords
-			// but aren't part of any <a> tag
 			cardHTML, _ := card.Html()
-			// Extract plain text segments (not inside <a> tags)
-			// Remove all <a>...</a> tags and see what named text remains
-			aTagRegex := regexp.MustCompile(`<a[^>]*>.*?</a>`)
-			plainText := aTagRegex.ReplaceAllString(cardHTML, "|||")
-			// Split on known separators
-			separators := []string{" &amp; ", " & ", ", ", " and "}
-			for _, sep := range separators {
-				plainText = strings.ReplaceAll(plainText, sep, "|||")
-			}
-			// Also split on defeat/vs keywords
-			for _, kw := range []string{" defeats ", " defeat ", " vs. ", " - "} {
-				plainText = strings.ReplaceAll(plainText, kw, "|||")
-			}
-			// Clean up HTML entities and tags
-			plainText = strings.ReplaceAll(plainText, "&amp;", "&")
-			tagRegex := regexp.MustCompile(`<[^>]*>`)
-			plainText = tagRegex.ReplaceAllString(plainText, "")
-
-			for _, segment := range strings.Split(plainText, "|||") {
-				name := strings.TrimSpace(segment)
-				// Filter out non-name text: empty, match times like "(12:34)", result text, brackets
-				if name == "" || name == "c" || name == "(c)" {
-					continue
-				}
-				if strings.HasPrefix(name, "(") || strings.HasPrefix(name, "[") {
-					continue
-				}
-				// Skip if it looks like a match time or result annotation
-				if matched, _ := regexp.MatchString(`^\(?\d+:\d{2}\)?$`, name); matched {
-					continue
-				}
-				if matched, _ := regexp.MatchString(`^\[.*\]$`, name); matched {
-					continue
-				}
-				// Skip common non-name tokens
-				skipTokens := []string{"Draw", "Time Limit Draw", "Double Count Out",
-					"No Contest", "Double Disqualification", "TITLE CHANGE",
-					"Pinfall", "Submission", "Count Out", "Double DQ", "Double KO", "Majority Draw"}
-				isSkip := false
-				for _, tok := range skipTokens {
-					if strings.EqualFold(name, tok) {
-						isSkip = true
-						break
-					}
-				}
-				if isSkip {
-					continue
-				}
-				// Must look like a name: at least 2 chars, not already linked
-				if len(name) < 2 || linkedNames[name] {
-					continue
-				}
-				// Add as ghost participant
+			for _, name := range extractGhostNames(cardHTML, linkedNames) {
 				participants = append(participants, matchParticipantRaw{
 					Name:        name,
 					CagematchID: 0,
@@ -2247,6 +2228,95 @@ func (s *CagematchScraper) parseMatchRows(doc *goquery.Document, matches *[]RawM
 type matchParticipantRaw struct {
 	Name        string
 	CagematchID int
+}
+
+var (
+	// (?s) so link text spanning injected newlines/comments still matches
+	ghostATagRe    = regexp.MustCompile(`(?s)<a[^>]*>.*?</a>`)
+	ghostCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+	ghostHTMLTagRe = regexp.MustCompile(`<[^>]*>`)
+	// Match times like "(8:35)" or "(1:02:33)", optionally unparenthesized
+	ghostTimeRe = regexp.MustCompile(`\(?\d+:\d{2}(?::\d{2})?\)?`)
+	// "(c)" champion markers and "[2]" fall counts
+	ghostAnnotationRe = regexp.MustCompile(`\((?:c|w/[^)]*)\)|\[[^\]]*\]`)
+	ghostLetterRe     = regexp.MustCompile(`\p{L}`)
+	ghostAllDigitsRe  = regexp.MustCompile(`^\d+$`)
+)
+
+// ghostSkipTokens are result/annotation words that must never become ghost
+// participants. Compared case-insensitively as prefixes so trailing junk
+// ("Time Limit Draw (20:20)") is caught too.
+var ghostSkipTokens = []string{
+	"Draw", "Time Limit Draw", "Double Count Out", "No Contest", "No Decision",
+	"Double Disqualification", "Double DQ", "Double KO", "Majority Draw",
+	"TITLE CHANGE", "Pinfall", "Submission", "Count Out", "DQ", "KO",
+	"Referee Stoppage", "Technical Draw", "by",
+}
+
+// extractGhostNames finds unlinked wrestler names in a match card's HTML.
+// Strategy: remove all <a>...</a> elements (linked wrestlers/teams), split the
+// leftover plain text on separators and result keywords, and keep segments that
+// still look like names after aggressive cleanup.
+func extractGhostNames(cardHTML string, linkedNames map[string]bool) []string {
+	plainText := ghostCommentRe.ReplaceAllString(cardHTML, "")
+	plainText = ghostATagRe.ReplaceAllString(plainText, "|||")
+	// Split on known separators
+	for _, sep := range []string{" &amp; ", " & ", ", ", " and "} {
+		plainText = strings.ReplaceAll(plainText, sep, "|||")
+	}
+	// Also split on defeat/vs keywords
+	for _, kw := range []string{" defeats ", " defeat ", " vs. ", " - "} {
+		plainText = strings.ReplaceAll(plainText, kw, "|||")
+	}
+	// Clean up HTML entities and tags
+	plainText = strings.ReplaceAll(plainText, "&amp;", "&")
+	plainText = ghostHTMLTagRe.ReplaceAllString(plainText, "")
+
+	var names []string
+	for _, segment := range strings.Split(plainText, "|||") {
+		name, ok := CleanGhostName(segment)
+		if !ok || linkedNames[name] {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+// CleanGhostName normalizes one candidate ghost-participant name segment.
+// It strips match times, annotations, and stray punctuation, then rejects
+// anything that no longer looks like a wrestler name (result tokens, decoy
+// numbers, leftover brackets). Returns ok=false if the segment is junk.
+// Exported so DB-cleanup tooling can apply identical rules to stored data.
+func CleanGhostName(segment string) (string, bool) {
+	// Remove match times and annotations anywhere in the segment, then trim
+	// stray punctuation left behind (e.g. ") (8:35)" → "").
+	// No '.' in the cutset — legit names end with it ("Blue Demon Jr.")
+	name := html.UnescapeString(segment)
+	name = ghostTimeRe.ReplaceAllString(name, "")
+	name = ghostAnnotationRe.ReplaceAllString(name, "")
+	name = strings.Trim(name, " \t\n()[]{}·:;,!?-–—")
+
+	if len(name) < 2 {
+		return "", false
+	}
+	// Must contain at least one letter (rejects decoy numbers like "9.85").
+	// Pure digits are allowed — some performers use numeric ring names ("326").
+	if !ghostLetterRe.MatchString(name) && !ghostAllDigitsRe.MatchString(name) {
+		return "", false
+	}
+	// Skip result/annotation tokens ("Time Limit Draw", "by DQ", ...).
+	// Prefix must end at a word boundary so "KO" doesn't match "Koguma".
+	for _, tok := range ghostSkipTokens {
+		if len(name) < len(tok) || !strings.EqualFold(name[:len(tok)], tok) {
+			continue
+		}
+		rest := name[len(tok):]
+		if rest == "" || rest[0] == ' ' || rest[0] == '(' {
+			return "", false
+		}
+	}
+	return name, true
 }
 
 // parseMatchResult takes the raw text of a match and figures out who won.
@@ -2524,6 +2594,29 @@ func guessSocialName(url string) string {
 	default:
 		return "website"
 	}
+}
+
+// Decoy rating numbers glued directly to letters, e.g. "Stardo9.85m" or
+// "Stardom9.65 5STAR" — the residue of Cagematch's hidden-element injection
+// in data scraped before sanitization existed.
+// Only digits glued after a lowercase letter are treated as decoys: injections
+// always land mid-word ("Stardo9.85m", "Ko1.61rakuen", "Stardom9.65 5STAR"),
+// while legit numbers attach to uppercase or follow a space ("PW2.0",
+// "IWC Reloaded 12.0", "Debut 15.5th Anniversary").
+var (
+	decoyMidWordRe     = regexp.MustCompile(`([a-z])\d+\.\d{1,2}([a-z])`)
+	decoyAfterLetterRe = regexp.MustCompile(`([a-z])\d+\.\d{1,2}`)
+)
+
+// CleanStoredText repairs text scraped before sanitization existed: removes
+// invisible characters and decoy numbers glued directly to letters
+// ("Stardo9.85m Nighter" → "Stardom Nighter"). Legitimate numbers separated by
+// spaces ("IWC Reloaded 12.0") are untouched. Used by DB-cleanup tooling.
+func CleanStoredText(s string) string {
+	s = stripInvisibleChars(s)
+	s = decoyMidWordRe.ReplaceAllString(s, "$1$2")
+	s = decoyAfterLetterRe.ReplaceAllString(s, "$1")
+	return s
 }
 
 // --- Deduplication ---

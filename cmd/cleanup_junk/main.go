@@ -64,9 +64,7 @@ func cleanGhostParticipants(db *gorm.DB, apply bool, limit int) {
 		// Names glued by zero-width chars may hold several wrestlers — split first
 		var parts []string
 		for _, seg := range strings.Split(scraper.CleanStoredText(row.Name), ", ") {
-			if name, ok := scraper.CleanGhostName(seg); ok {
-				parts = append(parts, name)
-			}
+			parts = append(parts, scraper.SplitGhostSegment(seg)...)
 		}
 
 		switch {

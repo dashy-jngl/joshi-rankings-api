@@ -2273,12 +2273,36 @@ func extractGhostNames(cardHTML string, linkedNames map[string]bool) []string {
 	plainText = ghostHTMLTagRe.ReplaceAllString(plainText, "")
 
 	var names []string
+	seen := make(map[string]bool)
 	for _, segment := range strings.Split(plainText, "|||") {
-		name, ok := CleanGhostName(segment)
-		if !ok || linkedNames[name] {
-			continue
+		for _, name := range SplitGhostSegment(segment) {
+			if linkedNames[name] || seen[name] {
+				continue
+			}
+			seen[name] = true
+			names = append(names, name)
 		}
-		names = append(names, name)
+	}
+	return names
+}
+
+// SplitGhostSegment splits one plain-text segment into cleaned candidate
+// names. A segment with unbalanced parentheses is a fragment of a stable
+// listing ("Therapy (Gunther Isaak" from "Therapy (Gunther Isaak & Matt
+// Skyler)"), so it splits at the parens to recover the stable name and member
+// name separately. Balanced parentheses are left to CleanGhostName, which
+// keeps them ("Luigi (Brandon Dillinger)").
+// Exported so DB-cleanup tooling can apply identical rules to stored data.
+func SplitGhostSegment(segment string) []string {
+	pieces := []string{segment}
+	if strings.Count(segment, "(") != strings.Count(segment, ")") {
+		pieces = strings.FieldsFunc(segment, func(r rune) bool { return r == '(' || r == ')' })
+	}
+	var names []string
+	for _, p := range pieces {
+		if name, ok := CleanGhostName(p); ok {
+			names = append(names, name)
+		}
 	}
 	return names
 }
@@ -2291,11 +2315,10 @@ func extractGhostNames(cardHTML string, linkedNames map[string]bool) []string {
 func CleanGhostName(segment string) (string, bool) {
 	// Remove match times and annotations anywhere in the segment, then trim
 	// stray punctuation left behind (e.g. ") (8:35)" → "").
-	// No '.' in the cutset — legit names end with it ("Blue Demon Jr.")
 	name := html.UnescapeString(segment)
 	name = ghostTimeRe.ReplaceAllString(name, "")
 	name = ghostAnnotationRe.ReplaceAllString(name, "")
-	name = strings.Trim(name, " \t\n()[]{}·:;,!?-–—")
+	name = trimGhostEdges(name)
 
 	if len(name) < 2 {
 		return "", false
@@ -2317,6 +2340,39 @@ func CleanGhostName(segment string) (string, bool) {
 		}
 	}
 	return name, true
+}
+
+// trimGhostEdges trims junk punctuation and unbalanced brackets from the ends
+// of a candidate name, preserving balanced pairs like the real-name suffix in
+// "Luigi (Brandon Dillinger)". No '.' in the cutset — legit names end with it
+// ("Blue Demon Jr.").
+func trimGhostEdges(name string) string {
+	for {
+		orig := name
+		name = strings.Trim(name, " \t\n{}·:;,!?-–—")
+		switch {
+		// Unwrap a fully parenthesized name: "(Foo)" → "Foo"
+		case len(name) >= 2 && name[0] == '(' && name[len(name)-1] == ')' &&
+			!strings.ContainsAny(name[1:len(name)-1], "()"):
+			name = name[1 : len(name)-1]
+		// Drop brackets whose partner is missing
+		case strings.HasPrefix(name, ")"), strings.HasPrefix(name, "]"):
+			name = name[1:]
+		case strings.HasSuffix(name, "("), strings.HasSuffix(name, "["):
+			name = name[:len(name)-1]
+		case strings.HasPrefix(name, "(") && !strings.Contains(name, ")"):
+			name = name[1:]
+		case strings.HasPrefix(name, "[") && !strings.Contains(name, "]"):
+			name = name[1:]
+		case strings.HasSuffix(name, ")") && !strings.Contains(name, "("):
+			name = name[:len(name)-1]
+		case strings.HasSuffix(name, "]") && !strings.Contains(name, "["):
+			name = name[:len(name)-1]
+		}
+		if name == orig {
+			return name
+		}
+	}
 }
 
 // parseMatchResult takes the raw text of a match and figures out who won.

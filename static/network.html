@@ -149,24 +149,6 @@
         .info-connection:hover { border-color: var(--accent); }
         .info-connection .count { color: var(--accent); font-weight: 700; }
 
-        /* Autocomplete dropdown */
-        .ac-item {
-            padding: 8px 14px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            color: var(--text-primary);
-            border-bottom: 1px solid var(--border);
-        }
-        .ac-item:hover, .ac-item.active {
-            background: var(--bg-card);
-            color: var(--accent);
-        }
-        .ac-item .ac-promo {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            margin-left: 8px;
-        }
-
         /* Multi-select highlight */
         .node.selected {
             stroke: #ffd700;
@@ -256,7 +238,8 @@
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=2"></script>
+    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
         <div class="page-header">
             <h1>🌐 Wrestler Network</h1>
@@ -270,7 +253,6 @@
             </div>
             <div style="position:relative; flex:1; min-width:200px;">
                 <input type="text" id="searchInput" placeholder="Search wrestler..." autocomplete="off">
-                <div id="autocompleteDropdown" style="position:absolute; top:100%; left:0; right:0; background:var(--bg-secondary); border:1px solid var(--border); border-top:none; border-radius:0 0 6px 6px; max-height:200px; overflow-y:auto; display:none; z-index:100;"></div>
             </div>
             <div class="range-slider-wrap" style="display:flex; flex-direction:column; gap:2px; min-width:220px;">
                 <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-secondary);">
@@ -363,83 +345,19 @@
         }
     }
 
-    // Search with autocomplete — works in both modes
+    // Search — shared WrestlerSearch component, works in both modes
     const searchInput = document.getElementById('searchInput');
-    const acDropdown = document.getElementById('autocompleteDropdown');
-    let searchDebounce = null;
-    let acIndex = -1;
-
-    searchInput.addEventListener('input', () => {
-        clearTimeout(searchDebounce);
-        const q = searchInput.value.trim();
-        if (q.length < 2) { acDropdown.style.display = 'none'; return; }
-
-        searchDebounce = setTimeout(async () => {
-            if (!allWrestlers) {
-                const res = await fetch('/api/wrestler-slim');
-                allWrestlers = await res.json();
+    WrestlerSearch.attach(searchInput, {
+        source: 'names',
+        onSelect: w => {
+            if (currentMode === 'wrestler') {
+                // Load full wrestler network
+                loadWrestlerNetwork(w.id);
+            } else {
+                // In top network mode: highlight & zoom to the wrestler
+                highlightAndZoomTo(w.id);
             }
-            const ql = q.toLowerCase();
-            const matches = allWrestlers
-                .filter(w => w.name.toLowerCase().includes(ql))
-                .sort((a, b) => {
-                    const an = a.name.toLowerCase(), bn = b.name.toLowerCase();
-                    const aExact = an === ql, bExact = bn === ql;
-                    if (aExact !== bExact) return aExact ? -1 : 1;
-                    const aStarts = an.startsWith(ql), bStarts = bn.startsWith(ql);
-                    if (aStarts !== bStarts) return aStarts ? -1 : 1;
-                    return an.localeCompare(bn);
-                })
-                .slice(0, 10);
-            if (matches.length === 0) { acDropdown.style.display = 'none'; return; }
-
-            acDropdown.innerHTML = matches.map((w, i) => `
-                <div class="ac-item" data-id="${w.ID || w.id}" data-name="${w.name}" data-idx="${i}">
-                    ${w.name}<span class="ac-promo">${w.promotion || ''}</span>
-                </div>
-            `).join('');
-            acDropdown.style.display = 'block';
-            acIndex = -1;
-
-            acDropdown.querySelectorAll('.ac-item').forEach(el => {
-                el.addEventListener('click', () => selectFromAutocomplete(el));
-            });
-        }, 200);
-    });
-
-    searchInput.addEventListener('keydown', (e) => {
-        const items = acDropdown.querySelectorAll('.ac-item');
-        if (!items.length) return;
-        if (e.key === 'ArrowDown') { e.preventDefault(); acIndex = Math.min(acIndex + 1, items.length - 1); updateACHighlight(items); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); acIndex = Math.max(acIndex - 1, 0); updateACHighlight(items); }
-        else if (e.key === 'Enter' && acIndex >= 0) { e.preventDefault(); selectFromAutocomplete(items[acIndex]); }
-        else if (e.key === 'Escape') { acDropdown.style.display = 'none'; }
-    });
-
-    function updateACHighlight(items) {
-        items.forEach((el, i) => el.classList.toggle('active', i === acIndex));
-    }
-
-    function selectFromAutocomplete(el) {
-        const id = parseInt(el.dataset.id);
-        const name = el.dataset.name;
-        acDropdown.style.display = 'none';
-        searchInput.value = '';
-
-        if (currentMode === 'wrestler') {
-            // Load full wrestler network
-            loadWrestlerNetwork(id);
-        } else {
-            // In top network mode: highlight & zoom to the wrestler
-            highlightAndZoomTo(id);
-        }
-    }
-
-    // Close autocomplete when clicking elsewhere
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('#searchInput') && !e.target.closest('#autocompleteDropdown')) {
-            acDropdown.style.display = 'none';
-        }
+        },
     });
 
     // Highlight a wrestler node and zoom to it in top network mode
@@ -550,8 +468,7 @@
     // Populate promotion filter from wrestlers list
     async function loadPromoFilter() {
         if (!allWrestlers) {
-            const res = await fetch('/api/wrestler-slim');
-            allWrestlers = await res.json();
+            allWrestlers = await WrestlerSearch.load('names');
         }
         const promos = [...new Set(allWrestlers.map(w => w.promotion).filter(Boolean))].sort();
         const select = document.getElementById('promoFilter');
@@ -1387,7 +1304,7 @@
     // Init
     loadTopNetwork();
     </script>
-    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js"></script>
     <script src="/static/js/auth.js"></script>
     <script src="/static/js/footer.js"></script>

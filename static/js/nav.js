@@ -22,7 +22,6 @@
             </div>
             <div id="nav-search-wrap">
                 <input type="text" placeholder="Search wrestlers..." autocomplete="off">
-                <div class="nav-search-dropdown"></div>
             </div>
             <div class="nav-top-right">
                 <button class="nav-burger" aria-label="Menu">☰</button>

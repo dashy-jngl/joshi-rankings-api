@@ -105,50 +105,6 @@
             box-shadow: 0 0 0 2px var(--accent-glow);
         }
         
-        .wrestler-dropdown {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            z-index: 100;
-            max-height: 200px;
-            overflow-y: auto;
-            display: none;
-        }
-        
-        .wrestler-dropdown.show {
-            display: block;
-        }
-        
-        .wrestler-option {
-            padding: 12px 16px;
-            cursor: pointer;
-            border-bottom: 1px solid var(--border);
-            transition: background 0.2s;
-        }
-        
-        .wrestler-option:last-child {
-            border-bottom: none;
-        }
-        
-        .wrestler-option:hover {
-            background: var(--bg-hover);
-        }
-        
-        .wrestler-option-name {
-            font-weight: 500;
-            color: var(--text-primary);
-        }
-        
-        .wrestler-option-details {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            margin-top: 2px;
-        }
-        
         .predict-button, .simulate-button {
             width: 100%;
             padding: 16px;
@@ -507,7 +463,8 @@
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=2"></script>
+    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
         <div class="page-header">
             <h1>🔮 Match Predictor</h1>
@@ -531,7 +488,6 @@
                 <div class="wrestler-input-group">
                     <div class="wrestler-input">
                         <input type="text" placeholder="Search for a wrestler..." data-team="1" data-slot="0">
-                        <div class="wrestler-dropdown"></div>
                     </div>
                 </div>
             </div>
@@ -543,7 +499,6 @@
                 <div class="wrestler-input-group">
                     <div class="wrestler-input">
                         <input type="text" placeholder="Search for a wrestler..." data-team="2" data-slot="0">
-                        <div class="wrestler-dropdown"></div>
                     </div>
                 </div>
             </div>
@@ -650,21 +605,13 @@
     </div>
 
     <script>
-        let allWrestlers = [];
         let currentMode = 'singles';
         let tournamentFormat = 'single_elimination';
         let selectedWrestlers = {}; // { team: { slot: wrestler } }
 
-        // Load wrestlers on page load
-        async function loadWrestlers() {
-            try {
-                const response = await fetch('/api/wrestler-slim');
-                allWrestlers = await response.json();
-                // Sort by ELO descending for better autocomplete
-                allWrestlers.sort((a, b) => b.elo - a.elo);
-            } catch (e) {
-                console.error('Failed to load wrestlers:', e);
-            }
+        // Preload wrestler list so the first autocomplete is instant
+        function loadWrestlers() {
+            return WrestlerSearch.load('slim');
         }
 
         // Mode switching
@@ -752,12 +699,12 @@
                         <span style="color: var(--text-muted); font-size: 0.8rem; min-width: 24px;">R1-${m + 1}</span>
                         <div class="wrestler-input" style="flex: 1;">
                             <input type="text" placeholder="Wrestler ${m * 2 + 1}..." data-team="tournament" data-slot="${m * 2}" style="width: 100%;">
-                            <div class="wrestler-dropdown"></div>
+                            
                         </div>
                         <span style="color: var(--text-muted); font-weight: 600;">vs</span>
                         <div class="wrestler-input" style="flex: 1;">
                             <input type="text" placeholder="Wrestler ${m * 2 + 2}..." data-team="tournament" data-slot="${m * 2 + 1}" style="width: 100%;">
-                            <div class="wrestler-dropdown"></div>
+                            
                         </div>
                     `;
                     container.appendChild(matchDiv);
@@ -777,7 +724,6 @@
                     const blockLabel = (blockCount > 1) ? `Block ${blockNames[Math.floor(i / poolSize)]} - ` : '';
                     inputDiv.innerHTML = `
                         <input type="text" placeholder="${blockLabel}Wrestler ${(i % poolSize) + 1}..." data-team="tournament" data-slot="${i}">
-                        <div class="wrestler-dropdown"></div>
                     `;
                     container.appendChild(inputDiv);
                 }
@@ -786,76 +732,24 @@
             setupWrestlerInputs();
         }
 
-        // Setup autocomplete for wrestler inputs
+        // Setup autocomplete for wrestler inputs — shared WrestlerSearch component
+        // gives every input the same keyboard/ranking behavior as the nav search.
         function setupWrestlerInputs() {
             document.querySelectorAll('.wrestler-input input').forEach(input => {
-                input.addEventListener('input', handleWrestlerSearch);
-                input.addEventListener('focus', handleWrestlerSearch);
-                input.addEventListener('blur', function() {
-                    // Delay hiding dropdown to allow clicking
-                    setTimeout(() => {
-                        const dropdown = input.nextElementSibling;
-                        dropdown.classList.remove('show');
-                    }, 200);
-                });
-            });
-        }
-
-        function handleWrestlerSearch(e) {
-            const input = e.target;
-            const dropdown = input.nextElementSibling;
-            const query = input.value.toLowerCase();
-
-            if (query.length < 1) {
-                dropdown.classList.remove('show');
-                return;
-            }
-
-            const matches = allWrestlers.filter(w => 
-                w.name.toLowerCase().includes(query) ||
-                (w.promotion || '').toLowerCase().includes(query)
-            ).sort((a, b) => {
-                const an = a.name.toLowerCase(), bn = b.name.toLowerCase();
-                const aExact = an === query, bExact = bn === query;
-                if (aExact !== bExact) return aExact ? -1 : 1;
-                const aStarts = an.startsWith(query), bStarts = bn.startsWith(query);
-                if (aStarts !== bStarts) return aStarts ? -1 : 1;
-                return an.localeCompare(bn);
-            }).slice(0, 10);
-
-            if (matches.length === 0) {
-                dropdown.classList.remove('show');
-                return;
-            }
-
-            dropdown.innerHTML = matches.map(w => `
-                <div class="wrestler-option" data-id="${w.id}">
-                    <div class="wrestler-option-name">${w.name}</div>
-                    <div class="wrestler-option-details">
-                        ${w.promotion || 'Freelance'} • ELO: ${Math.round(w.elo)} • Momentum: ${formatMomentum(w.momentum)}
-                    </div>
-                </div>
-            `).join('');
-
-            dropdown.classList.add('show');
-
-            // Add click handlers
-            dropdown.querySelectorAll('.wrestler-option').forEach(option => {
-                option.addEventListener('click', function() {
-                    const wrestlerId = parseInt(this.dataset.id);
-                    const wrestler = allWrestlers.find(w => w.id === wrestlerId);
-                    
-                    input.value = wrestler.name;
-                    dropdown.classList.remove('show');
-                    
-                    // Store selection
-                    const team = input.dataset.team;
-                    const slot = parseInt(input.dataset.slot);
-                    
-                    if (!selectedWrestlers[team]) selectedWrestlers[team] = {};
-                    selectedWrestlers[team][slot] = wrestler;
-                    
-                    clearResults();
+                if (input.dataset.wsAttached) return; // don't double-attach on rebuilds
+                input.dataset.wsAttached = '1';
+                WrestlerSearch.attach(input, {
+                    source: 'slim',
+                    minChars: 1,
+                    clearOnSelect: false,
+                    detail: w => `${w.promotion || 'Freelance'} • ELO: ${Math.round(w.elo)}`,
+                    onSelect: wrestler => {
+                        const team = input.dataset.team;
+                        const slot = parseInt(input.dataset.slot);
+                        if (!selectedWrestlers[team]) selectedWrestlers[team] = {};
+                        selectedWrestlers[team][slot] = wrestler;
+                        clearResults();
+                    },
                 });
             });
         }
@@ -1166,7 +1060,7 @@
                 for (let i = 0; i < size; i++) {
                     const div = document.createElement('div');
                     div.className = 'wrestler-input';
-                    div.innerHTML = `<input type="text" placeholder="Wrestler ${i+1}..." data-team="${t}" data-slot="${i}"><div class="wrestler-dropdown"></div>`;
+                    div.innerHTML = `<input type="text" placeholder="Wrestler ${i+1}..." data-team="${t}" data-slot="${i}">`;
                     group.appendChild(div);
                 }
                 container.appendChild(section);
@@ -1184,7 +1078,7 @@
             for (let i = 0; i < size; i++) {
                 const section = document.createElement('div');
                 section.className = 'team-section';
-                section.innerHTML = `<div class="team-header"><div class="team-title">Wrestler ${i+1}</div></div><div class="wrestler-input-group"><div class="wrestler-input"><input type="text" placeholder="Search for a wrestler..." data-team="multi" data-slot="${i}"><div class="wrestler-dropdown"></div></div></div>`;
+                section.innerHTML = `<div class="team-header"><div class="team-title">Wrestler ${i+1}</div></div><div class="wrestler-input-group"><div class="wrestler-input"><input type="text" placeholder="Search for a wrestler..." data-team="multi" data-slot="${i}"></div></div>`;
                 container.appendChild(section);
             }
             setupWrestlerInputs();
@@ -1269,7 +1163,7 @@
             generateTournamentInputs();
         });
     </script>
-    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js"></script>
     <script src="/static/js/auth.js"></script>
     <script src="/static/js/footer.js"></script>

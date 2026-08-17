@@ -150,7 +150,10 @@ a:hover { color: var(--accent-hover); }
     width: 240px;
 }
 #nav-search-wrap input::placeholder { color: var(--text-muted); }
-.nav-search-dropdown {
+
+/* === Wrestler Search component (js/wrestler-search.js) === */
+.ws-anchor { position: relative; }
+.ws-dropdown {
     display: none;
     position: absolute;
     top: 100%;
@@ -166,22 +169,23 @@ a:hover { color: var(--accent-hover); }
     z-index: 200;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
-.nav-search-item {
+.ws-item {
     padding: 8px 12px;
     cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
     font-size: 0.85rem;
     border-bottom: 1px solid var(--border);
     transition: background 0.1s;
 }
-.nav-search-item:last-child { border-bottom: none; }
-.nav-search-item:hover, .nav-search-item.active { background: var(--bg-hover); }
-.nav-search-name { font-weight: 500; }
-.nav-search-name mark { background: var(--accent-glow); color: var(--accent); border-radius: 2px; padding: 0 1px; }
-.nav-search-promo { color: var(--text-muted); font-size: 0.75rem; }
-.nav-search-empty { padding: 12px; color: var(--text-muted); font-size: 0.85rem; text-align: center; }
+.ws-item:last-child { border-bottom: none; }
+.ws-item:hover, .ws-item.active { background: var(--bg-hover); }
+.ws-name { font-weight: 500; }
+.ws-name mark { background: var(--accent-glow); color: var(--accent); border-radius: 2px; padding: 0 1px; }
+.ws-sub { color: var(--text-muted); font-size: 0.75rem; text-align: right; }
+.ws-empty { padding: 12px; color: var(--text-muted); font-size: 0.85rem; text-align: center; }
 
 /* === Layout === */
 .container {

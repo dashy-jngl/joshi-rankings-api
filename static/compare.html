@@ -22,31 +22,6 @@
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2/hammer.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
-        .compare-search {
-            position: relative;
-        }
-        .search-results {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 0 0 6px 6px;
-            max-height: 200px;
-            overflow-y: auto;
-            z-index: 10;
-            display: none;
-        }
-        .search-results.active { display: block; }
-        .search-item {
-            padding: 8px 14px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            border-bottom: 1px solid var(--border);
-        }
-        .search-item:hover { background: var(--bg-hover); }
-        .search-item .promo { color: var(--text-muted); font-size: 0.8rem; }
         .selected-wrestlers {
             display: flex;
             flex-wrap: wrap;
@@ -133,7 +108,8 @@
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=2"></script>
+    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
         <div class="page-header">
             <h1>⚖️ Compare Wrestlers</h1>
@@ -141,11 +117,8 @@
         </div>
 
         <div class="compare-search">
-            <input type="text" id="addWrestler" placeholder="Type to add a wrestler..."
-                style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 14px; border-radius: 6px; font-family: inherit; font-size: 0.9rem;"
-                oninput="searchWrestler(this.value)"
-                onfocus="searchWrestler(this.value)">
-            <div class="search-results" id="searchResults"></div>
+            <input type="text" id="addWrestler" placeholder="Type to add a wrestler..." autocomplete="off"
+                style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 14px; border-radius: 6px; font-family: inherit; font-size: 0.9rem;">
         </div>
 
         <div class="selected-wrestlers" id="selectedWrestlers"></div>
@@ -180,7 +153,15 @@
         let compareChart = null;
 
         async function init() {
-            allWrestlers = await fetch('/api/wrestler-slim').then(r => r.json());
+            allWrestlers = await WrestlerSearch.load('slim');
+
+            // Shared search component — same keyboard/ranking behavior as the nav bar
+            WrestlerSearch.attach(document.getElementById('addWrestler'), {
+                source: 'slim',
+                detail: w => `${w.promotion || 'Freelance'} · ELO: ${Math.round(w.elo)}`,
+                exclude: w => selected.some(s => s.id === w.id),
+                onSelect: addWrestler,
+            });
 
             // Check URL params for pre-selected wrestlers
             const params = new URLSearchParams(window.location.search);
@@ -193,49 +174,7 @@
                 results.forEach(w => { if (w) addWrestlerFull(w); });
             }
 
-            // Close search on click outside
-            document.addEventListener('click', (e) => {
-                if (!e.target.closest('.compare-search')) {
-                    document.getElementById('searchResults').classList.remove('active');
-                }
-            });
-
             initChart();
-        }
-
-        function searchWrestler(query) {
-            const results = document.getElementById('searchResults');
-            if (!query || query.length < 2) {
-                results.classList.remove('active');
-                return;
-            }
-
-            const q = query.toLowerCase();
-            const matches = allWrestlers
-                .filter(w => w.name.toLowerCase().includes(q) && !selected.find(s => s.id === w.id))
-                .sort((a, b) => {
-                    // Prioritize: exact match > starts with > contains
-                    const aName = a.name.toLowerCase();
-                    const bName = b.name.toLowerCase();
-                    const aExact = aName === q ? 0 : aName.startsWith(q) ? 1 : 2;
-                    const bExact = bName === q ? 0 : bName.startsWith(q) ? 1 : 2;
-                    if (aExact !== bExact) return aExact - bExact;
-                    return aName.length - bName.length; // shorter names first
-                })
-                .slice(0, 10);
-
-            if (matches.length === 0) {
-                results.classList.remove('active');
-                return;
-            }
-
-            results.innerHTML = matches.map(w => `
-                <div class="search-item" onclick="addWrestler(${JSON.stringify(w).replace(/"/g, '&quot;')})">
-                    <div>${w.name}</div>
-                    <div class="promo">${w.promotion || 'Freelance'} · ELO: ${Math.round(w.elo)}</div>
-                </div>
-            `).join('');
-            results.classList.add('active');
         }
 
         // Called from search results — slim data, fetch full then add
@@ -254,8 +193,6 @@
 
             wrestlerColors[w.id] = defaultColors[selected.length % defaultColors.length];
             selected.push(w);
-            document.getElementById('addWrestler').value = '';
-            document.getElementById('searchResults').classList.remove('active');
             renderSelected();
             renderCompareStats();
             updateURL();
@@ -599,7 +536,7 @@
 
         init();
     </script>
-    <script src="/static/js/nav-search.js?v=2"></script>
+    <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js"></script>
     <script src="/static/js/auth.js"></script>
     <script src="/static/js/footer.js"></script>

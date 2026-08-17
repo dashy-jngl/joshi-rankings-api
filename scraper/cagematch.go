@@ -1,9 +1,13 @@
 package scraper
 
 import (
+	"encoding/base64"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -21,20 +25,22 @@ import (
 // It scrapes wrestler profiles and match histories from cagematch.net.
 //
 // Think of this like a Python class:
-//   class CagematchScraper:
-//       def __init__(self, db):
-//           self.db = db
-//           self.skip_list = set()  # male wrestler IDs
+//
+//	class CagematchScraper:
+//	    def __init__(self, db):
+//	        self.db = db
+//	        self.skip_list = set()  # male wrestler IDs
 //
 // In Go, we use a struct + methods instead of a class.
 type CagematchScraper struct {
 	db              *gorm.DB
 	baseURL         string
-	skipList        map[int]bool   // cagematch IDs we know are male — don't re-fetch
-	mu              sync.Mutex     // protects skipList from concurrent access
-	delay           time.Duration  // delay between HTTP requests (be respectful!)
-	CurrentWrestler string         // name of wrestler currently being scraped
-	IsRunning       bool           // whether a scrape is in progress
+	skipList        map[int]bool  // cagematch IDs we know are male — don't re-fetch
+	mu              sync.Mutex    // protects skipList from concurrent access
+	delay           time.Duration // delay between HTTP requests (be respectful!)
+	CurrentWrestler string        // name of wrestler currently being scraped
+	IsRunning       bool          // whether a scrape is in progress
+	client          *http.Client  // shared client with cookie jar (holds Sucuri clearance cookie)
 }
 
 // GetDelay returns the scraper's configured delay between requests
@@ -65,11 +71,18 @@ func (s *CagematchScraper) SetStatus(wrestler string, running bool) {
 // NewCagematchScraper creates a new scraper instance.
 // This is Go's version of __init__ / a constructor.
 func NewCagematchScraper(db *gorm.DB) *CagematchScraper {
+	// Cookie jar persists the Sucuri CloudProxy clearance cookie across requests
+	// so we only solve the anti-bot challenge once (it's valid for 24h).
+	jar, _ := cookiejar.New(nil)
 	s := &CagematchScraper{
 		db:       db,
 		baseURL:  "https://www.cagematch.net",
 		skipList: make(map[int]bool),
 		delay:    527 * time.Second, // respectful default; override via admin settings
+		client: &http.Client{
+			Jar:     jar,
+			Timeout: 30 * time.Second,
+		},
 	}
 
 	// Load persisted skip list from DB
@@ -346,10 +359,11 @@ func (s *CagematchScraper) FetchAndCollect(proc *Processor) (int, error) {
 // This is correct for incremental updates where ELO is already established.
 //
 // Strategy (hybrid event-first approach):
-//   Phase 1: Scrape Cagematch event search for the last 30 days
-//   Phase 2: From new events' card pages, find which wrestlers were involved
-//   Phase 3: Only scrape THOSE wrestlers' recent match pages (not all 500+)
-//   Phase 4: Multi-pass discovery for any newly found wrestlers
+//
+//	Phase 1: Scrape Cagematch event search for the last 30 days
+//	Phase 2: From new events' card pages, find which wrestlers were involved
+//	Phase 3: Only scrape THOSE wrestlers' recent match pages (not all 500+)
+//	Phase 4: Multi-pass discovery for any newly found wrestlers
 //
 // This is way more efficient than scraping every wrestler individually.
 // The 30-day lookback catches late Cagematch uploads (community-driven, sporadic).
@@ -947,36 +961,169 @@ func (s *CagematchScraper) GetStatus() (string, bool) {
 // goquery is Go's BeautifulSoup — it lets you use CSS selectors on HTML.
 //
 // Python equivalent:
-//   resp = requests.get(url, headers={"User-Agent": "..."})
-//   soup = BeautifulSoup(resp.text, "html.parser")
-func (s *CagematchScraper) fetchPage(url string) (*goquery.Document, error) {
-	// Create a custom request so we can set headers
-	req, err := http.NewRequest("GET", url, nil)
+//
+//	resp = requests.get(url, headers={"User-Agent": "..."})
+//	soup = BeautifulSoup(resp.text, "html.parser")
+func (s *CagematchScraper) fetchPage(pageURL string) (*goquery.Document, error) {
+	body, err := s.fetchBody(pageURL)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return nil, err
 	}
 
-	// Be honest about who we are
-	req.Header.Set("User-Agent", "JoshiRankingsBot/1.0 (wrestling ELO project)")
-
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetching %s: %w", url, err)
+	// Cagematch sits behind a Sucuri CloudProxy WAF that serves a JavaScript
+	// cookie challenge instead of the real page until the right cookie is set.
+	// The challenge is deterministic — it encodes exactly which cookie to set —
+	// so we solve it in Go (no browser needed), store the cookie in our jar,
+	// and retry the request once.
+	if name, value, ok := parseSucuriChallenge(body); ok {
+		s.setSucuriCookie(pageURL, name, value)
+		log.Printf("[cagematch] Solved Sucuri challenge, set %s cookie", name)
+		body, err = s.fetchBody(pageURL)
+		if err != nil {
+			return nil, err
+		}
+		if _, _, still := parseSucuriChallenge(body); still {
+			return nil, fmt.Errorf("still blocked by Sucuri challenge after solving for %s", pageURL)
+		}
 	}
-	defer resp.Body.Close() // ALWAYS close the body in Go — like Python's `with` statement
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("got status %d for %s", resp.StatusCode, url)
-	}
-
-	// Parse HTML into a queryable document
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("parsing HTML: %w", err)
 	}
-
 	return doc, nil
+}
+
+// fetchBody performs a single GET and returns the response body as a string.
+// It uses the shared client (with cookie jar) so the Sucuri clearance cookie
+// is reused across every request once it has been obtained.
+func (s *CagematchScraper) fetchBody(pageURL string) (string, error) {
+	req, err := http.NewRequest("GET", pageURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("creating request: %w", err)
+	}
+
+	// Present as a normal browser. The Sucuri challenge is solvable regardless
+	// of User-Agent, but a real browser UA avoids harder bot blocks.
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetching %s: %w", pageURL, err)
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading body for %s: %w", pageURL, err)
+	}
+
+	// Sucuri serves its challenge with a 307/200; only treat non-2xx that
+	// aren't the challenge as errors (the challenge body is handled by caller).
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("got status %d for %s", resp.StatusCode, pageURL)
+	}
+
+	return string(data), nil
+}
+
+// setSucuriCookie stores the solved clearance cookie in the client's jar so it
+// is sent automatically on all future requests to cagematch.
+func (s *CagematchScraper) setSucuriCookie(pageURL, name, value string) {
+	u, err := url.Parse(pageURL)
+	if err != nil {
+		return
+	}
+	s.client.Jar.SetCookies(u, []*http.Cookie{{
+		Name:  name,
+		Value: value,
+		Path:  "/",
+	}})
+}
+
+// sucuriPayloadRe extracts the base64 payload from the Sucuri challenge script:
+//
+//	...sucuri_cloudproxy_js='',S='<BASE64>';...
+var sucuriPayloadRe = regexp.MustCompile(`S='([A-Za-z0-9+/=]+)'`)
+
+// parseSucuriChallenge detects a Sucuri CloudProxy JS cookie challenge in the
+// response body and, if present, computes the cookie name and value the
+// challenge instructs the browser to set. Returns ok=false for normal pages.
+//
+// The challenge's decoded JS always has the shape:
+//
+//	<var>=<concat expr>;document.cookie=<concat expr> + "=" + <var> + ';path=/;...'; location.reload();
+//
+// where each concat expr is a "+"-joined list of quoted single chars and
+// String.fromCharCode(N) calls. We evaluate those two concat expressions to
+// recover (cookieName, cookieValue) without running any JavaScript.
+func parseSucuriChallenge(body string) (name, value string, ok bool) {
+	if !strings.Contains(body, "sucuri_cloudproxy_js") {
+		return "", "", false
+	}
+	m := sucuriPayloadRe.FindStringSubmatch(body)
+	if m == nil {
+		return "", "", false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(m[1])
+	if err != nil {
+		return "", "", false
+	}
+	js := string(decoded)
+
+	// Split the value assignment from the cookie assignment.
+	sep := ";document.cookie="
+	sepIdx := strings.Index(js, sep)
+	if sepIdx < 0 {
+		return "", "", false
+	}
+	valExpr := js[:sepIdx]             // "<var>=<concat>"
+	cookieExpr := js[sepIdx+len(sep):] // "<concat> + \"=\" + <var> + ';path...'"
+
+	// Value: strip the leading "<var>=" then evaluate the concat.
+	if eq := strings.Index(valExpr, "="); eq >= 0 {
+		valExpr = valExpr[eq+1:]
+	}
+	value = evalJSConcat(valExpr)
+
+	// Name: everything before the ` "=" ` marker is the cookie-name concat.
+	if nameEnd := strings.Index(cookieExpr, `"="`); nameEnd >= 0 {
+		name = evalJSConcat(cookieExpr[:nameEnd])
+	}
+
+	if name == "" || value == "" {
+		return "", "", false
+	}
+	return name, value, true
+}
+
+// fromCharCodeRe matches a String.fromCharCode(N) call.
+var fromCharCodeRe = regexp.MustCompile(`^String\.fromCharCode\((\d+)\)$`)
+
+// evalJSConcat evaluates a JavaScript string-concatenation expression made up of
+// quoted single characters ('a' or "a") and String.fromCharCode(N) calls joined
+// by "+". This is exactly the subset Sucuri's challenge uses to spell out the
+// cookie name and value. Anything it doesn't recognize is skipped.
+func evalJSConcat(expr string) string {
+	var b strings.Builder
+	for _, tok := range strings.Split(expr, "+") {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			continue
+		}
+		if len(tok) >= 2 && (tok[0] == '\'' || tok[0] == '"') && tok[len(tok)-1] == tok[0] {
+			b.WriteString(tok[1 : len(tok)-1])
+			continue
+		}
+		if cc := fromCharCodeRe.FindStringSubmatch(tok); cc != nil {
+			if n, err := strconv.Atoi(cc[1]); err == nil {
+				b.WriteRune(rune(n))
+			}
+		}
+	}
+	return b.String()
 }
 
 // --- Wrestler Profile Scraping ---
@@ -1194,12 +1341,12 @@ func (s *CagematchScraper) ScrapePromotionHistory(cagematchID int) ([]PromotionH
 
 // ScrapeTitleReigns fetches a wrestler's title history from page=11.
 type TitleReignEntry struct {
-	TitleName      string
+	TitleName        string
 	CagematchTitleID int
-	ReignNumber    int
-	WonDate        time.Time
-	LostDate       *time.Time
-	DurationDays   int
+	ReignNumber      int
+	WonDate          time.Time
+	LostDate         *time.Time
+	DurationDays     int
 }
 
 func (s *CagematchScraper) ScrapeTitleReigns(cagematchID int) ([]TitleReignEntry, error) {
@@ -1381,18 +1528,18 @@ func (s *CagematchScraper) syncTitleReigns(entries []TitleReignEntry, proc *Proc
 
 // TitleHolder represents one person in a reign (tag titles have multiple).
 type TitleHolder struct {
-	Name   string
-	CMID   int
+	Name string
+	CMID int
 }
 
 // TitleHistoryEntry represents one reign from a title's history page.
 // Tag titles will have multiple holders.
 type TitleHistoryEntry struct {
-	ReignNumber    int
-	Holders        []TitleHolder
-	WonDate        time.Time
-	LostDate       *time.Time
-	DurationDays   int
+	ReignNumber  int
+	Holders      []TitleHolder
+	WonDate      time.Time
+	LostDate     *time.Time
+	DurationDays int
 }
 
 // ScrapeTitleInfo fetches the title's main page (?id=5&nr=X) for metadata.
@@ -1436,9 +1583,10 @@ func (s *CagematchScraper) ScrapeTitleInfo(titleID int) (*models.Title, error) {
 
 // ScrapeTitleHistory fetches the full title history from the main title page (?id=5&nr=X).
 // The reign table uses single-cell rows with ChampionDetailsText divs containing:
-//   #REIGN_NUM
-//   HOLDER_NAME(S) with wrestler links (id=2)
-//   DD.MM.YYYY - DD.MM.YYYY (DURATION days)
+//
+//	#REIGN_NUM
+//	HOLDER_NAME(S) with wrestler links (id=2)
+//	DD.MM.YYYY - DD.MM.YYYY (DURATION days)
 func (s *CagematchScraper) ScrapeTitleHistory(titleID int) ([]TitleHistoryEntry, error) {
 	url := fmt.Sprintf("%s/?id=5&nr=%d", s.baseURL, titleID)
 	doc, err := s.fetchPage(url)
@@ -1829,21 +1977,23 @@ func countryToRegion(country string) string {
 // URL pattern: https://www.cagematch.net/?id=2&nr={ID}&page=4
 //
 // The HTML structure is a TABLE with rows like:
-//   <tr>
-//     <td>#</td>
-//     <td>07.02.2026</td>        ← date
-//     <td>[promotion logo]</td>
-//     <td>
-//       <span class="MatchType">Tag Team Match: </span>
-//       <span class="MatchCard">Team A defeat Team B (12:34)</span>
-//       <div class="MatchEventLine">Event Name - Type @ Venue</div>
-//     </td>
-//   </tr>
+//
+//	<tr>
+//	  <td>#</td>
+//	  <td>07.02.2026</td>        ← date
+//	  <td>[promotion logo]</td>
+//	  <td>
+//	    <span class="MatchType">Tag Team Match: </span>
+//	    <span class="MatchCard">Team A defeat Team B (12:34)</span>
+//	    <div class="MatchEventLine">Event Name - Type @ Venue</div>
+//	  </td>
+//	</tr>
 //
 // Key parsing rules:
 //   - "defeat" or "defeats" keyword = left side wins
 //   - "Draw", "Double Count Out", "Time Limit Draw" etc = draw
 //   - "vs." without defeat/draw = no result, skip
+//
 // TestScrapeWrestler is a public wrapper for testing individual wrestler scrapes
 func (s *CagematchScraper) TestScrapeWrestler(cagematchID int) ([]RawMatch, error) {
 	matches, err := s.scrapeWrestlerMatches(cagematchID)
@@ -2102,13 +2252,14 @@ type matchParticipantRaw struct {
 // parseMatchResult takes the raw text of a match and figures out who won.
 //
 // Cagematch uses several result formats:
-//   "Suzu Suzuki defeats Risa Sera (25:09)"           → Suzu wins (note: "defeats" with s)
-//   "Team A defeat Team B (12:34)"                    → Team A wins
-//   "Team A defeat Team B and Team C (8:01)"          → Team A wins multi-way
-//   "Team A vs. Team B - Draw (19:07)"                → draw
-//   "Team A vs. Team B - Double Count Out (16:27)"    → draw
-//   "Team A vs. Team B - Time Limit Draw (60:00)"     → draw
-//   "Team A defeat Team B by Count Out (11:34)"       → Team A wins
+//
+//	"Suzu Suzuki defeats Risa Sera (25:09)"           → Suzu wins (note: "defeats" with s)
+//	"Team A defeat Team B (12:34)"                    → Team A wins
+//	"Team A defeat Team B and Team C (8:01)"          → Team A wins multi-way
+//	"Team A vs. Team B - Draw (19:07)"                → draw
+//	"Team A vs. Team B - Double Count Out (16:27)"    → draw
+//	"Team A vs. Team B - Time Limit Draw (60:00)"     → draw
+//	"Team A defeat Team B by Count Out (11:34)"       → Team A wins
 func parseMatchResult(text, matchType, eventLine string, participants []matchParticipantRaw) (*RawMatch, error) {
 	// Detect result type
 	// "defeats" must be checked before "defeat" since it contains it

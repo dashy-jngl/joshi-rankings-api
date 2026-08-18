@@ -276,10 +276,14 @@
         }
         
         .bracket-container {
+            /* the whole bracket lives in one big panel; match cards and
+               round chips sit on its dark ground */
             display: flex;
             gap: 0;
             overflow-x: auto;
-            padding: 20px 0;
+            background: var(--panel);
+            border: 2px solid var(--panel-edge);
+            padding: 20px;
         }
         
         .bracket-round {

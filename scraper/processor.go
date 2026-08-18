@@ -16,7 +16,7 @@ import (
 // isMultiFallType returns true for match types that Cagematch splits into
 // individual fall entries (gauntlets, battle royals, rumbles).
 // We only want to store ONE entry per event+type combo for these.
-func isMultiFallType(matchType string) bool {
+func IsMultiFallType(matchType string) bool {
 	mt := strings.ToLower(matchType)
 	return strings.Contains(mt, "gauntlet") ||
 		strings.Contains(mt, "battle royal") ||
@@ -899,7 +899,7 @@ func (p *Processor) FindExistingMatch(raw RawMatch) uint {
 func (p *Processor) findExistingMatch(raw RawMatch) uint {
 	// Multi-fall dedup: gauntlets/royals/rumbles — if we already have ANY
 	// match with this event + type on the same date, return it
-	if raw.CagematchEventID > 0 && isMultiFallType(raw.MatchType) {
+	if raw.CagematchEventID > 0 && IsMultiFallType(raw.MatchType) {
 		var match models.Match
 		if p.db.Where("cagematch_event_id = ? AND match_type = ?", raw.CagematchEventID, raw.MatchType).First(&match).Error == nil {
 			return match.ID
@@ -933,36 +933,10 @@ func (p *Processor) findExistingMatch(raw RawMatch) uint {
 		}
 	}
 
-	// Tertiary dedup: match old-format keys (date|event|type|participants|time)
-	// against new cm: format. Catches matches stored before we switched to cm: keys.
-	if raw.CagematchEventID > 0 {
-		pids := sortedParticipantIDs(raw)
-		// Search by event ID + check participants match
-		var candidates []models.Match
-		p.db.Where("cagematch_event_id = ? AND match_key NOT LIKE 'cm:%'",
-			raw.CagematchEventID).Find(&candidates)
-		for _, m := range candidates {
-			// Check if participants match by comparing sorted IDs from the old key
-			if strings.Contains(m.MatchKey, pids) {
-				// Upgrade to new key format
-				p.db.Model(&m).Update("match_key", key)
-				if raw.MatchTime != "" && m.MatchTime == "" {
-					p.db.Model(&m).Update("match_time", raw.MatchTime)
-				}
-				if raw.EventName != "" && raw.EventName != m.EventName {
-					p.db.Model(&m).Update("event_name", raw.EventName)
-				}
-				return m.ID
-			}
-		}
-	}
-
-	// Fallback for legacy matches without match_key: date + event_name + match_type
-	// Only matches if ALL incoming participant IDs are present in the existing match
-	var candidates []models.Match
-	p.db.Where("date = ? AND event_name = ? AND match_key = ''",
-		raw.Date, raw.EventName).Find(&candidates)
-
+	// Tertiary dedup: same event + same match type + one participant-ID set
+	// contains the other → same match. Keys drift whenever Cagematch links a
+	// previously-unlinked wrestler, adds/edits match_time, or ghost parsing
+	// changes — so compare actual participant sets, not key strings.
 	rawIDs := make(map[int]bool)
 	for _, rp := range raw.Participants {
 		if rp.CagematchID > 0 {
@@ -970,36 +944,73 @@ func (p *Processor) findExistingMatch(raw RawMatch) uint {
 		}
 	}
 
+	var candidates []models.Match
+	if raw.CagematchEventID > 0 {
+		p.db.Where("cagematch_event_id = ?", raw.CagematchEventID).Find(&candidates)
+	} else {
+		p.db.Where("date = ? AND event_name = ?", raw.Date, raw.EventName).Find(&candidates)
+	}
+
 	for _, m := range candidates {
-		if strings.ToLower(m.MatchType) != strings.ToLower(raw.MatchType) {
+		if !strings.EqualFold(m.MatchType, raw.MatchType) {
 			continue
 		}
-
-		var participants []models.MatchParticipant
-		p.db.Where("match_id = ?", m.ID).Find(&participants)
-
-		existingIDs := make(map[int]bool)
-		for _, mp := range participants {
-			var w models.Wrestler
-			if err := p.db.Select("cagematch_id").First(&w, mp.WrestlerID).Error; err == nil {
-				existingIDs[int(w.CagematchID)] = true
-			}
+		if !CMIDSetsOverlap(rawIDs, p.matchCMIDSet(m.ID)) {
+			continue
 		}
-
-		// All incoming participants must exist in the stored match
-		allFound := true
-		for id := range rawIDs {
-			if !existingIDs[id] {
-				allFound = false
-				break
-			}
+		// Same match under a drifted key — upgrade stored key and fill gaps
+		if m.MatchKey != key {
+			p.db.Model(&m).Update("match_key", key)
 		}
-		if allFound && len(rawIDs) > 0 {
-			return m.ID
+		if raw.MatchTime != "" && m.MatchTime == "" {
+			p.db.Model(&m).Update("match_time", raw.MatchTime)
 		}
+		if raw.EventName != "" && raw.EventName != m.EventName {
+			p.db.Model(&m).Update("event_name", raw.EventName)
+		}
+		return m.ID
 	}
 
 	return 0
+}
+
+// matchCMIDSet returns the Cagematch IDs of a stored match's participants
+// (tracked wrestlers via their profile, ghosts via ghost_cagematch_id).
+func (p *Processor) matchCMIDSet(matchID uint) map[int]bool {
+	var participants []models.MatchParticipant
+	p.db.Where("match_id = ?", matchID).Find(&participants)
+
+	ids := make(map[int]bool)
+	for _, mp := range participants {
+		if mp.GhostCagematchID > 0 {
+			ids[mp.GhostCagematchID] = true
+			continue
+		}
+		var w models.Wrestler
+		if err := p.db.Select("cagematch_id").First(&w, mp.WrestlerID).Error; err == nil && w.CagematchID > 0 {
+			ids[int(w.CagematchID)] = true
+		}
+	}
+	return ids
+}
+
+// CMIDSetsOverlap reports whether one non-empty participant-ID set fully
+// contains the other. Subset (not equality) because either side may be
+// missing wrestlers that had no Cagematch link when it was scraped.
+func CMIDSetsOverlap(a, b map[int]bool) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	small, big := a, b
+	if len(small) > len(big) {
+		small, big = big, small
+	}
+	for id := range small {
+		if !big[id] {
+			return false
+		}
+	}
+	return true
 }
 
 // addMissingParticipants adds any participants to an existing match that

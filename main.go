@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
@@ -103,6 +104,11 @@ func main() {
 	r.SetTrustedProxies(nil)
 	r.Use(middleware.CORS())
 	r.Use(middleware.CSRFProtection())
+	// Compress responses — /api/wrestlers alone is ~2.4MB raw, ~490KB
+	// gzipped. Already-compressed asset formats are excluded.
+	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedExtensions([]string{
+		".webp", ".jpg", ".jpeg", ".png", ".gif", ".woff2", ".ico", ".avif",
+	})))
 
 	// Serve dashboard at root
 	r.Static("/static", "./static")
@@ -154,6 +160,10 @@ func main() {
 	{
 		// Public
 		api.GET("/tasklog", handleTaskLog())
+		api.GET("/background", handleBackground())
+		api.GET("/rankings-extras", handlers.GetRankingsExtras(db))
+		api.GET("/on-this-day", handlers.GetOnThisDay(db))
+		api.GET("/peak-elos", handlers.GetPeakElos(db))
 		api.GET("/wrestlers", handlers.GetWrestlers(db))
 		api.GET("/wrestler-names", handlers.GetWrestlerNames(db))
 		api.GET("/wrestler-slim", handlers.GetWrestlerSlim(db))
@@ -268,6 +278,33 @@ func main() {
 
 	// Warm expensive caches in background so first visitors don't wait
 	handlers.WarmRecordsCache(db)
+
+	// Warm the expensive caches (form ratings, peaks, on-this-day, the full
+	// wrestler list) as soon as the server is up, so the first visitor never
+	// eats a cold multi-second query.
+	go func() {
+		base := "http://127.0.0.1:" + port
+		up := false
+		for i := 0; i < 50 && !up; i++ {
+			time.Sleep(200 * time.Millisecond)
+			if resp, err := http.Get(base + "/api/matches/count"); err == nil {
+				resp.Body.Close()
+				up = true
+			}
+		}
+		if !up {
+			return
+		}
+		for _, p := range []string{
+			"/api/wrestlers", "/api/rankings-extras", "/api/peak-elos",
+			"/api/on-this-day", "/api/featured",
+		} {
+			if resp, err := http.Get(base + p); err == nil {
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+			}
+		}
+	}()
 
 	r.Run(":" + port)
 }

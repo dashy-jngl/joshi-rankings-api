@@ -13,8 +13,11 @@ import (
 
 func InitDB(dbPath string) (*gorm.DB, error) {
 	//open DB
-	// Enable WAL mode + busy timeout so reads work during writes
-	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=10000"
+	// WAL + busy timeout so reads work during writes; NORMAL sync is the
+	// standard WAL setting (fsync per checkpoint, not per commit) and a
+	// 64MB page cache keeps the hot indexes in memory. DSN params apply to
+	// every pooled connection, unlike PRAGMA via Exec.
+	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=10000&_synchronous=NORMAL&_cache_size=-65536"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, err
@@ -47,6 +50,8 @@ func InitDB(dbPath string) (*gorm.DB, error) {
 
 		// elo_histories: wrestler timeline queries
 		`CREATE INDEX IF NOT EXISTS idx_elo_hist_wrestler_date ON elo_histories(wrestler_id, match_date)`,
+		// covering index for per-match opponent ELO lookups (form ratings)
+		`CREATE INDEX IF NOT EXISTS idx_elo_hist_match_wrestler ON elo_histories(match_id, wrestler_id, elo)`,
 
 		// title_reigns: recent title changes, wrestler title history
 		`CREATE INDEX IF NOT EXISTS idx_title_reigns_won ON title_reigns(won_date)`,
@@ -63,6 +68,12 @@ func InitDB(dbPath string) (*gorm.DB, error) {
 		if err := db.Exec(idx).Error; err != nil {
 			log.Printf("Index warning: %v", err)
 		}
+	}
+
+	// Refresh planner statistics; a no-op when already current. Persisted in
+	// the DB file, so this is cheap on every boot after the first.
+	if err := db.Exec("PRAGMA optimize").Error; err != nil {
+		log.Printf("Optimize warning: %v", err)
 	}
 
 	//seed if empty

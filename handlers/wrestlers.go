@@ -98,16 +98,48 @@ func GetWrestlerSlim(db *gorm.DB) gin.HandlerFunc {
 }
 
 func GetWrestlers(db *gorm.DB) gin.HandlerFunc {
+	// The unfiltered list is the heaviest common payload on the site (every
+	// rankings/stats/compare view downloads it) and only changes when the
+	// scraper runs — serve it pre-marshaled from memory for 5 minutes.
+	var cached []byte
+	var cachedAt time.Time
+	var cacheMu sync.Mutex
+	cacheTTL := 5 * time.Minute
+
 	return func(c *gin.Context) {
+		promotion := c.Query("promotion")
+
+		if promotion == "" {
+			cacheMu.Lock()
+			if cached != nil && time.Since(cachedAt) < cacheTTL {
+				data := cached
+				cacheMu.Unlock()
+				c.Data(http.StatusOK, "application/json; charset=utf-8", data)
+				return
+			}
+			cacheMu.Unlock()
+		}
+
 		var wrestlers []models.Wrestler
 		query := db.Preload("Aliases")
-
-		if promotion := c.Query("promotion"); promotion != "" {
+		if promotion != "" {
 			query = query.Where("promotion = ?", promotion)
 		}
 		if err := query.Find(&wrestlers).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve wrestlers"})
 			return
+		}
+
+		if promotion == "" {
+			data, err := json.Marshal(wrestlers)
+			if err == nil {
+				cacheMu.Lock()
+				cached = data
+				cachedAt = time.Now()
+				cacheMu.Unlock()
+				c.Data(http.StatusOK, "application/json; charset=utf-8", data)
+				return
+			}
 		}
 		c.JSON(http.StatusOK, wrestlers)
 	}

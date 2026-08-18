@@ -114,7 +114,7 @@
         }
         
         .back-button {
-            background: none;
+            background: var(--card);
             border: 1px solid var(--border);
             color: var(--text-muted);
             padding: 6px 14px;
@@ -291,12 +291,19 @@
         }
         
         .bracket-round-header {
+            /* headers float over the wallpaper — same panel backing as the
+               match cards, hugging the text */
+            align-self: center;
+            background: var(--panel);
+            border: 2px solid var(--panel-edge);
+            padding: 4px 14px;
             text-align: center;
-            color: var(--text-muted);
-            font-size: 0.85rem;
+            color: var(--text);
+            font-family: var(--display);
+            font-size: 0.8rem;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.06em;
             margin-bottom: 12px;
         }
         
@@ -899,9 +906,9 @@
 
         function displaySingleEliminationResults(bracket, container) {
             const winnerHtml = bracket.winner ? `
-                <div style="text-align: center; margin-bottom: 24px; padding: 20px; background: var(--accent-glow); border: 1px solid var(--accent); border-radius: 0;">
+                <div class="card" style="text-align: center; margin-bottom: 24px; border-color: var(--gold);">
                     <h2 class="section-label" style="margin: 0;">Tournament Winner</h2>
-                    <h3 style="margin: 8px 0 0 0;">${bracket.winner.name}</h3>
+                    <h3 style="margin: 8px 0 0 0; font-size: 1.5rem;">${bracket.winner.name}</h3>
                 </div>
             ` : '';
             

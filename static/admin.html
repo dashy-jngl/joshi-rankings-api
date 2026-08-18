@@ -455,7 +455,9 @@
             try {
                 const resp = await fetch(`${API}${path}`, { method, headers, credentials: 'include' });
                 const data = await resp.json();
-                if (!resp.ok) throw new Error(data.error || resp.statusText);
+                // conflict/error bodies use "message" or "error"; statusText is
+                // empty over HTTP/2, so always fall back to the numeric code
+                if (!resp.ok) throw new Error(data.error || data.message || `HTTP ${resp.status}`);
                 return data;
             } catch (e) {
                 addLog(`Error: ${e.message}`, 'error');
@@ -941,7 +943,7 @@
             if (key) headers['X-API-Key'] = key;
             const resp = await fetch(`${API}${path}`, { method, headers, credentials: 'include', body: JSON.stringify(body) });
             const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || resp.statusText);
+            if (!resp.ok) throw new Error(data.error || data.message || `HTTP ${resp.status}`);
             return data;
         }
 

@@ -285,6 +285,11 @@
             border: 2px solid var(--panel-edge);
             padding: 20px;
         }
+        /* center the bracket in the panel — auto margins instead of
+           justify-content:center so a wide bracket can still scroll to its
+           left edge instead of clipping */
+        .bracket-container > :first-child { margin-left: auto; }
+        .bracket-container > :last-child { margin-right: auto; }
         
         .bracket-round {
             display: flex;

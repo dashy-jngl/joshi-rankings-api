@@ -126,6 +126,7 @@
         let rankExtras = {};        // active window's extras
         let atMoves = {};           // wrestler id -> all-time rank movement (window-independent)
         let peakElos = null;        // wrestler id -> {peak, date}, lazy-loaded for Peak mode
+        let tierById = {};          // wrestler id -> {tier, tierIcon} from the all-time ordering
         let currentSort = 'overall';
         let sortAsc = true;
         // Record column cycles: wins → wins desc → losses → losses desc → draws → draws desc → reset
@@ -227,6 +228,12 @@
                     w._region = JoshiRegions.regionOf(w._country);
                 });
 
+                // Tier is identity, not a per-view percentile: compute it once
+                // from the all-time ELO ordering so a wrestler keeps her real
+                // tier on every period board and under every filter.
+                const atSorted = [...allWrestlers].sort((a, b) => b.elo - a.elo);
+                atSorted.forEach((w, i) => { tierById[w.id] = getTier(i + 1, atSorted.length); });
+
                 rebuildRankings();
 
                 // Stats
@@ -301,11 +308,9 @@
                     .map(w => ({ ...w, move: atMoves[w.id] }))
                     .sort((a, b) => b.elo - a.elo);
             }
-            const total = list.length;
             allRankings = list.map((w, i) => {
-                const rank = i + 1;
-                const { tier, tierIcon } = getTier(rank, total);
-                return { ...w, rank, tier, tierIcon };
+                const { tier, tierIcon } = tierById[w.id] || getTier(i + 1, list.length);
+                return { ...w, rank: i + 1, tier, tierIcon };
             });
         }
 

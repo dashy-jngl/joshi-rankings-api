@@ -16,14 +16,15 @@
     <meta name="twitter:description" content="Browse the complete ELO power rankings for women's pro wrestling. Filter by promotion, weight class, and more.">
     <link rel="icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/css/shared.css?v=2">
+    <link rel="stylesheet" href="/static/css/shared.css?v=14">
 </head>
 <body>
-    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/nav.js?v=7"></script>
     <script src="/static/js/wrestler-search.js?v=1"></script>
+    <script src="/static/js/regions.js?v=1"></script>
 <div class="container">
         <div class="page-header">
-            <h1>💪 Power Rankings</h1>
+            <h1>Power Rankings</h1>
             <p>ELO-based rankings across all women's professional wrestling</p>
         </div>
 
@@ -39,7 +40,7 @@
             </div>
             <div class="stat-card">
                 <div class="value" id="statTopElo">—</div>
-                <div class="label">Highest ELO</div>
+                <div class="label" id="statTopLabel">Top Form</div>
             </div>
             <div class="stat-card">
                 <div class="value" id="statTopName">—</div>
@@ -47,9 +48,19 @@
             </div>
         </div>
 
-        <!-- Filters -->
-        <div class="filters-bar">
+        <!-- Filters: period on the first row, everything else on the second -->
+        <div class="filters-bar" style="align-items:center">
+            <div class="seg" id="periodSeg" title="Form = performance rating over the window — how strong each wrestler is right now, anchored to career level">
+                <button data-months="6" onclick="setPeriod(6)">6 mo</button>
+                <button data-months="12" class="active" onclick="setPeriod(12)">12 mo</button>
+                <button data-months="24" onclick="setPeriod(24)">2 y</button>
+                <button data-months="60" onclick="setPeriod(60)">5 y</button>
+                <button data-months="0" onclick="setPeriod(0)">All-time</button>
+                <button data-months="-1" onclick="setPeriod(-1)" title="Each wrestler's career-peak ELO and the year it was set">Peak</button>
+            </div>
             <input type="text" id="searchBox" placeholder="Search wrestlers or promotion..." oninput="applyFilters()">
+        </div>
+        <div class="filters-bar">
             <select id="tierFilter" onchange="applyFilters()">
                 <option value="">All Tiers</option>
             </select>
@@ -57,9 +68,9 @@
                 <option value="">All Promotions</option>
             </select>
             <select id="minMatchesFilter" onchange="applyFilters()">
-                <option value="0">Any # Matches</option>
+                <option value="0" selected>Any # Matches</option>
                 <option value="10">10+ Matches</option>
-                <option value="50" selected>50+ Matches</option>
+                <option value="50">50+ Matches</option>
                 <option value="100">100+ Matches</option>
                 <option value="500">500+ Matches</option>
                 <option value="1000">1000+ Matches</option>
@@ -90,9 +101,10 @@
                     <tr>
                         <th style="width:40px">#</th>
                         <th style="width:50px; cursor:pointer; white-space:nowrap" onclick="sortTable('overall')">Rank <span id="sort-overall" class="sort-arrow">▲</span></th>
+                        <th style="width:55px; cursor:pointer; white-space:nowrap" onclick="sortTable('move')" title="Rank movement over the last 7 days">±7d <span id="sort-move" class="sort-arrow"></span></th>
                         <th style="cursor:pointer; white-space:nowrap" onclick="sortTable('name')">Wrestler <span id="sort-name" class="sort-arrow"></span></th>
                         <th style="cursor:pointer; white-space:nowrap" onclick="sortTable('tier')">Tier <span id="sort-tier" class="sort-arrow"></span></th>
-                        <th style="width:80px; cursor:pointer; white-space:nowrap" onclick="sortTable('elo')">ELO <span id="sort-elo" class="sort-arrow"></span></th>
+                        <th style="width:80px; cursor:pointer; white-space:nowrap" onclick="sortTable('elo')" id="ratingHead">Form <span id="sort-elo" class="sort-arrow"></span></th>
                         <th style="width:80px; cursor:pointer; white-space:nowrap" onclick="sortTable('momentum')">Momentum <span id="sort-momentum" class="sort-arrow"></span></th>
                         <th style="width:140px; cursor:pointer; white-space:nowrap" onclick="sortTable('record')">Record <span id="sort-record" class="sort-arrow"></span></th>
                         <th style="width:70px; cursor:pointer; white-space:nowrap" onclick="sortTable('winpct')">Win% <span id="sort-winpct" class="sort-arrow"></span></th>
@@ -100,7 +112,7 @@
                     </tr>
                 </thead>
                 <tbody id="rankingsBody">
-                    <tr><td colspan="9"><div class="loading">Loading rankings...</div></td></tr>
+                    <tr><td colspan="10"><div class="loading">Loading rankings...</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -109,6 +121,11 @@
     <script>
         let allRankings = [];
         let allWrestlers = [];
+        let rankMonths = 12;        // form window in months; 0 = all-time ELO; -1 = career peak
+        let extrasByWindow = {};    // months -> extras map from /api/rankings-extras
+        let rankExtras = {};        // active window's extras
+        let atMoves = {};           // wrestler id -> all-time rank movement (window-independent)
+        let peakElos = null;        // wrestler id -> {peak, date}, lazy-loaded for Peak mode
         let currentSort = 'overall';
         let sortAsc = true;
         // Record column cycles: wins → wins desc → losses → losses desc → draws → draws desc → reset
@@ -132,7 +149,7 @@
                 Object.entries(groups).forEach(([name, icon]) => {
                     const opt = document.createElement('option');
                     opt.value = name;
-                    opt.textContent = `${icon} ${name}`;
+                    opt.textContent = name;
                     select.appendChild(opt);
                 });
             } catch (e) {
@@ -141,12 +158,12 @@
         }
 
         function getTier(rank, total) {
-            if (total === 0) return { tier: 'Seadling', tierIcon: '🌱' };
+            if (total === 0) return { tier: 'Seadling', tierIcon: '' };
             const pct = (rank / total) * 100;
             for (const t of tierDefs) {
                 if (pct <= t.max_pct) return { tier: t.name, tierIcon: t.icon };
             }
-            return { tier: 'Seadling', tierIcon: '🌱' };
+            return { tier: 'Seadling', tierIcon: '' };
         }
 
         // --- Tier CSS class ---
@@ -193,30 +210,27 @@
         async function loadData() {
             try {
                 await loadTiers(); // load tier definitions first
-                const [wrestlers, matchData] = await Promise.all([
+                const [wrestlers, matchData, extrasResp] = await Promise.all([
                     fetch('/api/wrestlers').then(r => r.json()),
                     fetch('/api/matches/count').then(r => r.json()),
+                    fetch('/api/rankings-extras').then(r => r.json()).catch(() => ({ extras: {} })),
                 ]);
 
                 allWrestlers = wrestlers;
+                rankExtras = extrasResp.extras || {};
+                extrasByWindow[12] = rankExtras;
+                Object.entries(rankExtras).forEach(([id, e]) => { atMoves[id] = e.move; });
 
-                // Sort by ELO descending to build rankings
-                const sorted = [...wrestlers].sort((a, b) => b.elo - a.elo);
-                const total = sorted.length;
-
-                allRankings = sorted.map((w, i) => {
-                    const rank = i + 1;
-                    const { tier, tierIcon } = getTier(rank, total);
-                    return { ...w, rank, tier, tierIcon };
+                // Canonical country + broad region per wrestler (js/regions.js)
+                allWrestlers.forEach(w => {
+                    w._country = JoshiRegions.canonCountry(w.birthplace);
+                    w._region = JoshiRegions.regionOf(w._country);
                 });
 
+                rebuildRankings();
+
                 // Stats
-                document.getElementById('statWrestlers').textContent = fmt(wrestlers.length);
                 document.getElementById('statMatches').textContent = fmt(matchData.count);
-                if (allRankings.length > 0) {
-                    document.getElementById('statTopElo').textContent = Math.round(allRankings[0].elo);
-                    document.getElementById('statTopName').textContent = allRankings[0].name;
-                }
 
                 // Populate promotion filter
                 const promos = [...new Set(wrestlers.map(w => w.promotion).filter(Boolean))].sort();
@@ -228,26 +242,122 @@
                     promoSelect.appendChild(opt);
                 });
 
-                // Populate region filter from birthplace
-                const regions = [...new Set(wrestlers.map(w => {
-                    if (!w.birthplace) return null;
-                    // Extract country/region (usually last part after comma)
-                    const parts = w.birthplace.split(',').map(s => s.trim());
-                    return parts[parts.length - 1] || null;
-                }).filter(Boolean))].sort();
+                // Region filter: broad regions first, then canonical countries
                 const regionSelect = document.getElementById('regionFilter');
-                regions.forEach(r => {
+                const presentRegions = new Set(allWrestlers.map(w => w._region).filter(Boolean));
+                const grpRegions = document.createElement('optgroup');
+                grpRegions.label = 'Regions';
+                JoshiRegions.REGION_ORDER.filter(r => presentRegions.has(r)).forEach(r => {
                     const opt = document.createElement('option');
-                    opt.value = r;
+                    opt.value = 'region:' + r;
                     opt.textContent = r;
-                    regionSelect.appendChild(opt);
+                    grpRegions.appendChild(opt);
                 });
+                regionSelect.appendChild(grpRegions);
+                const grpCountries = document.createElement('optgroup');
+                grpCountries.label = 'Countries';
+                [...new Set(allWrestlers.map(w => w._country).filter(Boolean))].sort().forEach(cn => {
+                    const opt = document.createElement('option');
+                    opt.value = cn;
+                    opt.textContent = cn;
+                    grpCountries.appendChild(opt);
+                });
+                regionSelect.appendChild(grpCountries);
 
                 applyFilters();
             } catch (e) {
                 document.getElementById('rankingsBody').innerHTML =
-                    '<tr><td colspan="7"><div class="empty">Failed to load data</div></td></tr>';
+                    '<tr><td colspan="10"><div class="empty">Failed to load data</div></td></tr>';
             }
+        }
+
+        // --- Period: form window (6/12/24/60 months) vs all-time ---
+        // Form ranks by anchored performance rating (quality of results in
+        // the window, blended with career ELO) and shows the window record;
+        // all-time is the classic ELO table. Movement is always vs 7 days
+        // ago within the active ordering.
+        function rebuildRankings() {
+            let list;
+            if (rankMonths > 0) {
+                list = allWrestlers
+                    .filter(w => rankExtras[w.id] && rankExtras[w.id].perf != null)
+                    .map(w => {
+                        const e = rankExtras[w.id];
+                        return { ...w, elo: e.perf, wins: e.w || 0, losses: e.l || 0, draws: e.d || 0,
+                                 match_count: e.n || 0, move: e.perf_move };
+                    })
+                    .sort((a, b) => b.elo - a.elo);
+            } else if (rankMonths === -1) {
+                // Career peaks don't shuffle week to week — no movement column.
+                list = allWrestlers
+                    .map(w => {
+                        const p = (peakElos || {})[w.id];
+                        return { ...w, elo: p ? p.peak : w.elo,
+                                 peakDate: p ? p.date : null, move: 0 };
+                    })
+                    .sort((a, b) => b.elo - a.elo);
+            } else {
+                list = allWrestlers
+                    .map(w => ({ ...w, move: atMoves[w.id] }))
+                    .sort((a, b) => b.elo - a.elo);
+            }
+            const total = list.length;
+            allRankings = list.map((w, i) => {
+                const rank = i + 1;
+                const { tier, tierIcon } = getTier(rank, total);
+                return { ...w, rank, tier, tierIcon };
+            });
+        }
+
+        async function setPeriod(months) {
+            if (months === rankMonths) return;
+            rankMonths = months;
+            document.querySelectorAll('#periodSeg button').forEach(b =>
+                b.classList.toggle('active', parseInt(b.dataset.months) === months));
+            const isForm = months > 0;
+            const isPeak = months === -1;
+            document.getElementById('ratingHead').innerHTML =
+                (isForm ? 'Form' : isPeak ? 'Peak' : 'ELO') + ' <span id="sort-elo" class="sort-arrow"></span>';
+            document.getElementById('statTopLabel').textContent =
+                isForm ? 'Top Form' : isPeak ? 'Highest Peak' : 'Highest ELO';
+            // The form window's ≥10-matches bar replaces the all-time
+            // match-count filter; reset it so the form list isn't gutted.
+            document.getElementById('minMatchesFilter').value = isForm ? '0' : '50';
+
+            if (isForm && !extrasByWindow[months]) {
+                document.getElementById('rankingsBody').innerHTML =
+                    '<tr><td colspan="10"><div class="loading">Crunching form ratings...</div></td></tr>';
+                try {
+                    const resp = await fetch(`/api/rankings-extras?months=${months}`).then(r => r.json());
+                    extrasByWindow[months] = resp.extras || {};
+                } catch (e) {
+                    extrasByWindow[months] = {};
+                }
+                if (rankMonths !== months) return; // user clicked away while loading
+            }
+            if (isPeak && !peakElos) {
+                document.getElementById('rankingsBody').innerHTML =
+                    '<tr><td colspan="10"><div class="loading">Digging up career peaks...</div></td></tr>';
+                try {
+                    const resp = await fetch('/api/peak-elos').then(r => r.json());
+                    peakElos = resp.peaks || {};
+                } catch (e) {
+                    peakElos = {};
+                }
+                if (rankMonths !== months) return;
+            }
+            if (isForm) rankExtras = extrasByWindow[months];
+            rebuildRankings();
+            applyFilters();
+        }
+
+        // --- Rank movement (vs 7 days ago) ---
+        function moveHTML(move) {
+            if (move === null || move === undefined)
+                return '<span class="momentum-neutral" style="font-size:0.75rem">NEW</span>';
+            if (move > 0) return `<span class="momentum-high">▲${move}</span>`;
+            if (move < 0) return `<span class="momentum-low">▼${-move}</span>`;
+            return '<span class="momentum-neutral">–</span>';
         }
 
         // --- Filter + Render ---
@@ -275,7 +385,14 @@
                 cutoff.setFullYear(cutoff.getFullYear() - activeYears);
                 filtered = filtered.filter(w => w.last_match_date && new Date(w.last_match_date) >= cutoff);
             }
-            if (region) filtered = filtered.filter(w => w.birthplace && w.birthplace.includes(region));
+            if (region) {
+                if (region.startsWith('region:')) {
+                    const rr = region.slice(7);
+                    filtered = filtered.filter(w => w._region === rr);
+                } else {
+                    filtered = filtered.filter(w => w._country === region);
+                }
+            }
             // Update stats to reflect filtered data
             document.getElementById('statWrestlers').textContent = fmt(filtered.length);
             if (filtered.length > 0) {
@@ -296,7 +413,7 @@
             const body = document.getElementById('rankingsBody');
 
             if (rankings.length === 0) {
-                body.innerHTML = '<tr><td colspan="9"><div class="empty">No wrestlers match your filters</div></td></tr>';
+                body.innerHTML = '<tr><td colspan="10"><div class="empty">No wrestlers match your filters</div></td></tr>';
                 return;
             }
 
@@ -309,12 +426,13 @@
                 <tr onclick="window.location='/wrestler/${w.id}'">
                     <td style="color: var(--text-muted); font-size: 0.8rem;">${idx + 1}</td>
                     <td>${rankHTML(w.rank)}</td>
+                    <td>${moveHTML(w.move)}</td>
                     <td>
                         <div style="font-weight: 600;">${w.name}</div>
                         <div style="font-size: 0.8rem; color: var(--text-muted);">${w.promotion || 'Freelance'}</div>
                     </td>
-                    <td><span class="tier-badge ${tierClass(w.tier)}">${w.tierIcon} ${w.tier}</span></td>
-                    <td><span class="elo ${eloClass(w.elo)}">${Math.round(w.elo)}</span></td>
+                    <td><span class="tier-badge ${tierClass(w.tier)}">${w.tier}</span></td>
+                    <td><span class="elo ${eloClass(w.elo)}">${Math.round(w.elo)}</span>${w.peakDate ? ` <span style="color:var(--text-muted);font-size:0.72rem">${w.peakDate.slice(0, 4)}</span>` : ''}</td>
                     <td><span class="momentum ${momentumClass(w.momentum)}">${momentumDisplay(w.momentum)}</span></td>
                     <td>
                         <span class="record">
@@ -368,6 +486,7 @@
                     case 'tier': va = a.rank; vb = b.rank; break;
                     case 'elo': va = a.elo; vb = b.elo; break;
                     case 'momentum': va = a.momentum || 0; vb = b.momentum || 0; break;
+                    case 'move': va = a.move ?? -Infinity; vb = b.move ?? -Infinity; break;
                     case 'wins-desc': case 'wins-asc': va = a.wins; vb = b.wins; break;
                     case 'losses-desc': case 'losses-asc': va = a.losses; vb = b.losses; break;
                     case 'draws-desc': case 'draws-asc': va = a.draws; vb = b.draws; break;
@@ -404,13 +523,18 @@
             `;
         }
 
-        // --- Init ---
-        
-        loadData();
+        // --- Init --- (?period=6|12|24|60|alltime|peak deep-links a view)
+        loadData().then(() => {
+            const p = new URLSearchParams(location.search).get('period');
+            if (p != null) {
+                const m = p === 'peak' ? -1 : p === 'alltime' ? 0 : parseInt(p);
+                if (!isNaN(m) && [6, 12, 24, 60, 0, -1].includes(m)) setPeriod(m);
+            }
+        });
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js?v=1"></script>
-    <script src="/static/js/auth.js?v=1"></script>
-    <script src="/static/js/footer.js?v=1"></script>
+    <script src="/static/js/auth.js?v=3"></script>
+    <script src="/static/js/footer.js?v=2"></script>
 </body>
 </html>

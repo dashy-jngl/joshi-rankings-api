@@ -16,7 +16,7 @@
     <meta name="twitter:description" content="Compare joshi wrestlers head-to-head with ELO history charts, win rates, and detailed matchup statistics.">
     <link rel="icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/css/shared.css?v=2">
+    <link rel="stylesheet" href="/static/css/shared.css?v=14">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2/hammer.min.js"></script>
@@ -35,7 +35,7 @@
             padding: 6px 12px;
             background: var(--accent-glow);
             border: 1px solid var(--accent);
-            border-radius: 20px;
+            border-radius: 0;
             font-size: 0.85rem;
             font-weight: 600;
         }
@@ -57,9 +57,6 @@
         .color-picker-pop {
             position: absolute;
             z-index: 20;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 8px;
             padding: 8px;
             display: flex;
             flex-wrap: wrap;
@@ -82,9 +79,6 @@
             margin-top: 24px;
         }
         .compare-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
             padding: 16px;
         }
         .compare-card h4 {
@@ -108,27 +102,29 @@
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/nav.js?v=7"></script>
     <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
+        <div class="head-panel">
         <div class="page-header">
-            <h1>⚖️ Compare Wrestlers</h1>
+            <h1>Compare Wrestlers</h1>
             <p>Overlay ELO histories and compare stats side-by-side</p>
         </div>
 
         <div class="compare-search">
             <input type="text" id="addWrestler" placeholder="Type to add a wrestler..." autocomplete="off"
-                style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 14px; border-radius: 6px; font-family: inherit; font-size: 0.9rem;">
+                style="width: 100%; padding: 10px 14px; font-size: 0.9rem;">
+        </div>
         </div>
 
         <div class="selected-wrestlers" id="selectedWrestlers"></div>
 
         <div class="card" style="margin-top: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h3 style="color: var(--accent);">ELO Over Time</h3>
+                <h3 class="section-label" style="margin-bottom: 0;">ELO Over Time</h3>
                 <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-accent" id="btnTimeline" onclick="setChartMode('timeline')">📅 Timeline</button>
-                    <button class="btn btn-ghost" id="btnCareer" onclick="setChartMode('career')">🏋️ Career</button>
+                    <button class="btn btn-accent" id="btnTimeline" onclick="setChartMode('timeline')"> Timeline</button>
+                    <button class="btn btn-ghost" id="btnCareer" onclick="setChartMode('career')"> Career</button>
                     <span style="border-left: 1px solid rgba(255,255,255,0.1); margin: 0 4px;"></span>
                     <button class="btn btn-ghost cmp-range-btn" onclick="setCmpRange('1y')">1Y</button>
                     <button class="btn btn-ghost cmp-range-btn" onclick="setCmpRange('2y')">2Y</button>
@@ -145,8 +141,8 @@
     </div>
 
     <script>
-        const defaultColors = ['#e91e63', '#2196f3', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#ff5722', '#8bc34a'];
-        const colorPalette = ['#e91e63', '#2196f3', '#4caf50', '#ff9800', '#9c27b0', '#00bcd4', '#ff5722', '#8bc34a', '#f44336', '#ffeb3b', '#ff4081', '#69f0ae', '#40c4ff', '#ea80fc', '#ffffff', '#b0bec5'];
+        const defaultColors = ['#ffd700', '#5b82ff', '#00ff00', '#ff9800', '#9c27b0', '#00bcd4', '#ff5722', '#8bc34a'];
+        const colorPalette = ['#ffd700', '#5b82ff', '#00ff00', '#ff9800', '#9c27b0', '#00bcd4', '#ff5722', '#8bc34a', '#ff1f1f', '#ffeb3b', '#ff4fa8', '#69f0ae', '#40c4ff', '#ea80fc', '#ffffff', '#b0bec5'];
         let wrestlerColors = {}; // wrestler id -> color
         let allWrestlers = [];
         let selected = [];
@@ -218,7 +214,7 @@
                 <span class="selected-tag" style="position:relative;">
                     <span class="color-swatch" style="background: ${wrestlerColors[w.id]}" onclick="toggleColorPicker(event, ${w.id})"></span>
                     ${w.name} (${Math.round(w.elo)})
-                    <span class="remove" onclick="removeWrestler(${w.id})">✕</span>
+                    <span class="remove" onclick="removeWrestler(${w.id})"></span>
                 </span>
             `).join('');
             updateChart();
@@ -231,7 +227,7 @@
 
             const pop = document.createElement('div');
             pop.id = 'colorPicker';
-            pop.className = 'color-picker-pop';
+            pop.className = 'color-picker-pop pop';
             pop.innerHTML = colorPalette.map(c => `
                 <div class="cp-opt" style="background:${c};" onclick="pickColor(event, ${wrestlerId}, '${c}')"></div>
             `).join('');
@@ -282,7 +278,7 @@
         }
 
         function momentumColor(momentum) {
-            if (momentum > 0) return '#4ade80';
+            if (momentum > 0) return '#00ff00';
             if (momentum < 0) return 'var(--red)';
             return 'var(--text-muted)';
         }
@@ -413,7 +409,7 @@
             });
 
             el.innerHTML = `
-                <div class="compare-card">
+                <div class="compare-card card">
                     <h4>ELO Rating</h4>
                     ${stats.sort((a,b) => b.elo - a.elo).map(s => `
                         <div class="compare-row">
@@ -422,7 +418,7 @@
                         </div>
                     `).join('')}
                 </div>
-                <div class="compare-card">
+                <div class="compare-card card">
                     <h4>Rank</h4>
                     ${stats.sort((a,b) => a.rank - b.rank).map(s => `
                         <div class="compare-row">
@@ -431,7 +427,7 @@
                         </div>
                     `).join('')}
                 </div>
-                <div class="compare-card">
+                <div class="compare-card card">
                     <h4>Win Rate</h4>
                     ${stats.sort((a,b) => b.winPct - a.winPct).map(s => `
                         <div class="compare-row">
@@ -440,7 +436,7 @@
                         </div>
                     `).join('')}
                 </div>
-                <div class="compare-card">
+                <div class="compare-card card">
                     <h4>Momentum</h4>
                     ${stats.sort((a,b) => (b.momentum || 0) - (a.momentum || 0)).map(s => `
                         <div class="compare-row">
@@ -449,7 +445,7 @@
                         </div>
                     `).join('')}
                 </div>
-                <div class="compare-card">
+                <div class="compare-card card">
                     <h4>Total Matches</h4>
                     ${stats.sort((a,b) => b.totalMatches - a.totalMatches).map(s => `
                         <div class="compare-row">
@@ -491,15 +487,15 @@
                                     }
                                     const lines = [w.name + ': ' + ctx.parsed.y];
                                     if (point) {
-                                        if (point.event_name) lines.push('  ' + point.event_name);
-                                        if (point.opponents) lines.push('  vs ' + point.opponents);
+                                        if (point.event_name) lines.push(' ' + point.event_name);
+                                        if (point.opponents) lines.push(' vs ' + point.opponents);
                                         if (point.result) {
                                             const rt = point.result === 'W' ? 'Win' : point.result === 'L' ? 'Loss' : 'Draw';
-                                            lines.push('  Result: ' + rt);
+                                            lines.push(' Result: ' + rt);
                                         }
                                         if (point.elo_change) {
                                             const sign = point.elo_change > 0 ? '+' : '';
-                                            lines.push('  Change: ' + sign + point.elo_change.toFixed(1));
+                                            lines.push(' Change: ' + sign + point.elo_change.toFixed(1));
                                         }
                                     }
                                     return lines;
@@ -538,7 +534,7 @@
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js?v=1"></script>
-    <script src="/static/js/auth.js?v=1"></script>
-    <script src="/static/js/footer.js?v=1"></script>
+    <script src="/static/js/auth.js?v=3"></script>
+    <script src="/static/js/footer.js?v=2"></script>
 </body>
 </html>

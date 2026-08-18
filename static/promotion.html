@@ -16,7 +16,7 @@
     <meta name="twitter:description" content="View promotion details, roster, titles, and statistics for this women's pro wrestling promotion.">
     <link rel="icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/css/shared.css?v=2">
+    <link rel="stylesheet" href="/static/css/shared.css?v=14">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <style>
         .promo-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
@@ -25,14 +25,13 @@
         .section-title { font-size: 1.2rem; font-weight: 700; margin: 24px 0 12px; }
         .title-list { display: flex; flex-wrap: wrap; gap: 8px; }
         .title-chip {
-            background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
             padding: 8px 14px; cursor: pointer; transition: all 0.15s; font-size: 0.85rem;
         }
         .title-chip:hover { border-color: var(--accent); background: var(--bg-hover); }
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/nav.js?v=7"></script>
     <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
         <div id="content">
@@ -59,7 +58,7 @@
                         ${p.abbreviation ? `<span class="promo-badge">${p.abbreviation}</span>` : ''}
                         <span class="status-badge ${p.status === 'Active' ? 'status-active' : 'status-inactive'}">${p.status || 'Unknown'}</span>
                     </div>
-                    ${p.location ? `<div class="promo-location">📍 ${p.location}</div>` : ''}
+                    ${p.location ? `<div class="promo-location"> ${p.location}</div>` : ''}
 
                     <div class="stats-grid" style="margin-top:16px">
                         <div class="stat-card"><div class="value">${data.total_wrestlers}</div><div class="label">Total Wrestlers</div></div>
@@ -73,7 +72,7 @@
                 if (data.titles && data.titles.length > 0) {
                     html += `<h3 class="section-title">Championships</h3><div class="title-list">`;
                     data.titles.forEach(t => {
-                        html += `<div class="title-chip" onclick="window.location='/title/${t.cagematch_id}'">${t.name} <span class="status-badge ${t.status === 'Active' ? 'status-active' : 'status-inactive'}" style="margin-left:6px">${t.status}</span></div>`;
+                        html += `<div class="title-chip card" onclick="window.location='/title/${t.cagematch_id}'">${t.name} <span class="status-badge ${t.status === 'Active' ? 'status-active' : 'status-inactive'}" style="margin-left:6px">${t.status}</span></div>`;
                     });
                     html += `</div>`;
                 }
@@ -112,8 +111,8 @@
                             datasets: [{
                                 label: 'Wrestlers',
                                 data: data.year_by_year.map(y => y.wrestlers),
-                                backgroundColor: 'rgba(233,30,99,0.6)',
-                                borderColor: '#e91e63',
+                                backgroundColor: 'rgba(255,215,0,0.6)',
+                                borderColor: '#ffd700',
                                 borderWidth: 1,
                             }]
                         },
@@ -137,7 +136,7 @@
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js?v=1"></script>
-    <script src="/static/js/auth.js?v=1"></script>
-    <script src="/static/js/footer.js?v=1"></script>
+    <script src="/static/js/auth.js?v=3"></script>
+    <script src="/static/js/footer.js?v=2"></script>
 </body>
 </html>

@@ -16,19 +16,20 @@
     <meta name="twitter:description" content="View championship title history, current holder, and ELO prestige rating for this joshi wrestling title.">
     <link rel="icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/css/shared.css?v=2">
+    <link rel="stylesheet" href="/static/css/shared.css?v=14">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         .title-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
         .title-header h1 { font-size: 2rem; font-weight: 800; }
-        .current-holder-card { background: var(--bg-card); border: 1px solid var(--green); border-radius: 10px; padding: 16px; margin-bottom: 24px; }
+        /* .card with a deliberate green border — champion state */
+        .current-holder-card { border-color: var(--green); padding: 16px; margin-bottom: 24px; }
         .current-holder-card h3 { color: var(--green); margin-bottom: 8px; }
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/nav.js?v=7"></script>
     <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
         <div id="content">
@@ -65,7 +66,7 @@
 
                 // Current holders
                 if (data.current_holders && data.current_holders.length > 0) {
-                    html += `<div class="current-holder-card"><h3>👑 Current Champion${data.current_holders.length > 1 ? 's' : ''}</h3>`;
+                    html += `<div class="card current-holder-card"><h3 class="section-label">Current Champion${data.current_holders.length > 1 ? 's' : ''}</h3>`;
                     data.current_holders.forEach(h => {
                         const link = h.wrestler_id > 0 ? `<a href="/wrestler/${h.wrestler_id}">${h.wrestler_name}</a>` : h.wrestler_name;
                         html += `<div style="font-size:1.1rem;font-weight:600;">${link} <span style="color:var(--text-muted);font-size:0.85rem;">since ${h.won_date?.slice(0,10) || '?'}</span></div>`;
@@ -76,13 +77,13 @@
                 // ELO chart with range controls
                 html += `<div class="card" style="margin-bottom:24px">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                        <h3 style="color:var(--accent)">Title Holder ELO History</h3>
+                        <h3 class="section-label" style="margin:0">Title Holder ELO History</h3>
                         <div style="display:flex;gap:4px;">
                             <button class="btn btn-ghost elo-range-btn" onclick="setTitleEloRange('1y')" style="font-size:0.75rem;padding:3px 8px;">1Y</button>
                             <button class="btn btn-ghost elo-range-btn" onclick="setTitleEloRange('2y')" style="font-size:0.75rem;padding:3px 8px;">2Y</button>
                             <button class="btn btn-ghost elo-range-btn" onclick="setTitleEloRange('5y')" style="font-size:0.75rem;padding:3px 8px;">5Y</button>
                             <button class="btn btn-accent elo-range-btn active" onclick="setTitleEloRange('max')" style="font-size:0.75rem;padding:3px 8px;">MAX</button>
-                            <button class="btn btn-ghost" onclick="titleEloChart?.resetZoom()" style="font-size:0.75rem;padding:3px 8px;" title="Reset zoom">🔍</button>
+                            <button class="btn btn-ghost" onclick="titleEloChart?.resetZoom()" style="font-size:0.75rem;padding:3px 8px;" title="Reset zoom">⟲</button>
                         </div>
                     </div>
                     <div class="chart-container"><canvas id="eloChart"></canvas></div>
@@ -90,7 +91,7 @@
 
                 // Reign history table
                 html += `
-                    <h3 style="margin-bottom:12px">Reign History</h3>
+                    <h3 class="section-label">Reign History</h3>
                     <div class="table-wrapper"><table>
                         <thead><tr><th>#</th><th>Champion</th><th>Won</th><th>Lost</th><th>Duration</th><th>ELO</th></tr></thead>
                         <tbody>
@@ -203,8 +204,8 @@
                         datasets: [{
                             label: 'Holder ELO',
                             data: points.map(p => p.elo),
-                            borderColor: '#e91e63',
-                            backgroundColor: 'rgba(233,30,99,0.1)',
+                            borderColor: '#ffd700',
+                            backgroundColor: 'rgba(255,215,0,0.1)',
                             fill: true,
                             tension: 0.3,
                             pointRadius: 4,
@@ -256,7 +257,7 @@
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js?v=1"></script>
-    <script src="/static/js/auth.js?v=1"></script>
-    <script src="/static/js/footer.js?v=1"></script>
+    <script src="/static/js/auth.js?v=3"></script>
+    <script src="/static/js/footer.js?v=2"></script>
 </body>
 </html>

@@ -16,7 +16,7 @@
     <meta name="twitter:description" content="View event results, match card, and ELO changes for this joshi pro wrestling event.">
     <link rel="icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/css/shared.css?v=2">
+    <link rel="stylesheet" href="/static/css/shared.css?v=14">
     <style>
         .event-header { margin-bottom: 32px; }
         .event-name { font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; }
@@ -26,26 +26,26 @@
         }
         .event-meta a { color: var(--accent); }
         .match-card {
-            background: var(--card-bg); border-radius: 12px; padding: 16px 20px;
-            margin-bottom: 12px; border: 1px solid var(--border);
+            padding: 16px 20px;
+            margin-bottom: 12px;
         }
         .match-card.title-match { border-left: 3px solid var(--accent); }
         .match-header {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 10px; font-size: 0.8rem; color: var(--text-muted);
         }
-        .title-badge { background: rgba(233,30,99,0.15); color: var(--accent); }
+        .title-badge { background: rgba(255,215,0,0.12); color: var(--accent); }
         .match-result { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
         .participant-row { display: flex; align-items: center; gap: 8px; }
         .participant-row a { color: var(--text-primary); }
         .participant-row a:hover { color: var(--accent); }
         .participant-row .ghost { color: var(--text-muted); }
-        .elo-chip { font-size: 0.75rem; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
-        .elo-chip.positive { background: rgba(76,175,80,0.15); color: #4caf50; }
-        .elo-chip.negative { background: rgba(244,67,54,0.15); color: #f44336; }
+        .elo-chip { font-size: 0.75rem; padding: 1px 6px; border-radius: 0; font-weight: 600; }
+        .elo-chip.positive { background: rgba(0,255,0,0.15); color: #00ff00; }
+        .elo-chip.negative { background: rgba(255,31,31,0.15); color: #ff1f1f; }
         .elo-before { font-size: 0.75rem; color: var(--text-muted); }
         .vs-divider { font-weight: 700; color: var(--text-muted); font-size: 0.85rem; padding: 0 4px; }
-        .draw-badge { font-size: 0.75rem; background: rgba(255,193,7,0.15); color: #ffc107; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+        .draw-badge { font-size: 0.75rem; background: rgba(255,193,7,0.15); color: #ffc107; padding: 2px 8px; border-radius: 0; font-weight: 600; }
         .cm-link { font-size: 0.8rem; opacity: 0.5; }
         .cm-link:hover { opacity: 1; }
         @media (max-width: 600px) {
@@ -56,7 +56,7 @@
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/nav.js?v=7"></script>
     <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
         <a href="/" class="back-link">← Back</a>
@@ -87,12 +87,12 @@
                 document.title = `${data.event_name} — Joshitori`;
 
                 let html = `
-                    <div class="event-header">
+                    <div class="event-header head-panel">
                         <div class="event-name">${data.event_name}</div>
                         <div class="event-meta">
-                            <span>📅 ${data.date ? data.date.substring(0, 10) : 'Unknown'}</span>
-                            ${data.promotion ? `<span>🏟️ ${data.promotion}</span>` : ''}
-                            <span>⚔️ ${data.match_count} match${data.match_count !== 1 ? 'es' : ''}</span>
+                            <span> ${data.date ? data.date.substring(0, 10) : 'Unknown'}</span>
+                            ${data.promotion ? `<span> ${data.promotion}</span>` : ''}
+                            <span> ${data.match_count} match${data.match_count !== 1 ? 'es' : ''}</span>
                             <a href="https://www.cagematch.net/?id=1&nr=${data.cagematch_event_id}" target="_blank" rel="noopener" class="cm-link">View on Cagematch ↗</a>
                         </div>
                     </div>
@@ -118,12 +118,12 @@
 
                     const matchTypeBadges = [
                         `<span class="match-type-badge">${m.match_type || 'Match'}</span>`,
-                        m.is_title_match ? '<span class="match-type-badge title-badge">🏆 Title</span>' : '',
+                        m.is_title_match ? '<span class="match-type-badge title-badge"> Title</span>' : '',
                         m.is_draw ? '<span class="draw-badge">Draw</span>' : '',
                     ].filter(Boolean).join(' ');
 
                     html += `
-                        <div class="match-card${titleClass}">
+                        <div class="match-card card${titleClass}">
                             <div class="match-header">
                                 <span>Match ${i + 1}</span>
                                 ${matchTypeBadges}
@@ -148,7 +148,7 @@
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js?v=1"></script>
-    <script src="/static/js/auth.js?v=1"></script>
-    <script src="/static/js/footer.js?v=1"></script>
+    <script src="/static/js/auth.js?v=3"></script>
+    <script src="/static/js/footer.js?v=2"></script>
 </body>
 </html>

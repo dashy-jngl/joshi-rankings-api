@@ -16,14 +16,12 @@
     <meta name="twitter:description" content="Explore the rivalry network and connections between joshi wrestlers. Visualize who has faced whom across promotions.">
     <link rel="icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/css/shared.css?v=2">
+    <link rel="stylesheet" href="/static/css/shared.css?v=14">
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     <style>
         .network-container {
             position: relative;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
+            padding: 0;
             overflow: hidden;
         }
         #networkSvg {
@@ -40,13 +38,7 @@
         }
         .network-controls select,
         .network-controls input {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
             padding: 8px 14px;
-            border-radius: 6px;
-            font-family: inherit;
-            font-size: 0.85rem;
         }
         .network-controls input { flex: 1; min-width: 200px; }
         .node-label {
@@ -77,9 +69,6 @@
         }
         .tooltip {
             position: absolute;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
             padding: 12px 16px;
             font-size: 0.85rem;
             pointer-events: none;
@@ -123,25 +112,19 @@
         }
         .mode-tabs .btn.active {
             background: var(--accent);
-            color: white;
+            color: #000;
         }
         .info-panel {
-            background: var(--bg-secondary);
-            border-top: 1px solid var(--border);
             padding: 16px;
             display: none;
         }
         .info-panel.visible { display: block; }
-        .info-panel h3 { margin-bottom: 8px; color: var(--accent); }
         .info-connections {
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
         }
         .info-connection {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 6px;
             padding: 6px 10px;
             font-size: 0.8rem;
             cursor: pointer;
@@ -157,26 +140,14 @@
 
         /* Head-to-head panel */
         .h2h-panel {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 20px;
             margin-top: 16px;
             display: none;
         }
         .h2h-panel.visible { display: block; }
-        .h2h-panel h2 {
-            font-size: 1.1rem;
-            margin-bottom: 12px;
-            color: var(--accent);
-        }
         .h2h-wrestlers {
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
         }
         .h2h-wrestler-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 8px;
             padding: 10px 16px;
             font-size: 0.85rem;
         }
@@ -186,16 +157,13 @@
             display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
         }
         .h2h-pair-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 8px;
             padding: 12px 16px;
             font-size: 0.8rem;
             min-width: 220px;
         }
         .h2h-pair-card .vs { text-align: center; font-weight: 700; color: var(--text-secondary); margin: 4px 0; }
         .h2h-pair-card .stat { display: flex; justify-content: space-between; }
-        .h2h-pair-card .wins { color: #4caf50; font-weight: 600; }
+        .h2h-pair-card .wins { color: #00ff00; font-weight: 600; }
         .h2h-pair-card .draws-count { color: var(--text-muted); }
         .h2h-matches {
             max-height: 400px;
@@ -210,15 +178,12 @@
         .h2h-match-row .date { color: var(--text-muted); min-width: 90px; }
         .h2h-match-row .event { flex: 1; }
         .h2h-match-row .result { min-width: 120px; text-align: right; }
-        .h2h-match-row .winner { color: #4caf50; font-weight: 600; }
+        .h2h-match-row .winner { color: #00ff00; font-weight: 600; }
         .h2h-match-row .loser { color: var(--text-muted); }
         .h2h-match-row .draw { color: #ff9800; }
         .h2h-clear-btn {
-            float: right; font-size: 0.75rem; cursor: pointer;
-            background: var(--bg-card); border: 1px solid var(--border);
-            color: var(--text-secondary); padding: 4px 10px; border-radius: 4px;
+            float: right; font-size: 0.75rem; padding: 4px 10px;
         }
-        .h2h-clear-btn:hover { border-color: var(--accent); color: var(--accent); }
 
         /* Dual range slider */
         .dual-range input[type="range"] { z-index: 2; }
@@ -238,11 +203,12 @@
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/nav.js?v=7"></script>
     <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
+        <div class="head-panel">
         <div class="page-header">
-            <h1>🌐 Wrestler Network</h1>
+            <h1>Wrestler Network</h1>
             <p>Interactive relationship graph — see who fought who, discover rivalries and tag partners</p>
         </div>
 
@@ -264,7 +230,7 @@
                         style="position:absolute; width:100%; pointer-events:none; appearance:none; -webkit-appearance:none; background:transparent; height:20px;">
                     <input type="range" id="rangeTo" min="1970" max="2026" value="2026" step="1"
                         style="position:absolute; width:100%; pointer-events:none; appearance:none; -webkit-appearance:none; background:transparent; height:20px;">
-                    <div id="rangeTrack" style="position:absolute; top:8px; height:4px; background:var(--accent); border-radius:2px;"></div>
+                    <div id="rangeTrack" style="position:absolute; top:8px; height:4px; background:var(--accent); border-radius: 0;"></div>
                 </div>
             </div>
             <select id="sortBy">
@@ -286,20 +252,21 @@
                 <option value="4000">4000 wrestlers</option>
             </select>
             <label style="display:flex; align-items:center; gap:4px; font-size:0.8rem; color:var(--text-secondary)">
-                Min matches: <input type="number" id="minMatches" value="50" min="1" max="500" style="width:60px; background:var(--card-bg); color:var(--text-primary); border:1px solid #333; border-radius:4px; padding:2px 6px;">
+                Min matches: <input type="number" id="minMatches" value="50" min="1" max="500" style="width:60px; padding:2px 6px;">
             </label>
         </div>
+        </div>
 
-        <div class="network-container">
+        <div class="network-container card">
             <svg id="networkSvg"></svg>
-            <div class="tooltip" id="tooltip"></div>
-            <div class="info-panel" id="infoPanel"></div>
+            <div class="tooltip pop" id="tooltip"></div>
+            <div class="info-panel card" id="infoPanel"></div>
             <div class="legend" id="legend"></div>
         </div>
 
-        <div class="h2h-panel" id="h2hPanel">
-            <button class="h2h-clear-btn" onclick="clearSelection()">✕ Clear Selection</button>
-            <h2>⚔️ Head-to-Head Comparison</h2>
+        <div class="h2h-panel card" id="h2hPanel">
+            <button class="btn btn-ghost h2h-clear-btn" onclick="clearSelection()"> Clear Selection</button>
+            <h2 class="section-label">Head-to-Head Comparison</h2>
             <div id="h2hContent"></div>
         </div>
     </div>
@@ -318,17 +285,17 @@
 
     // Color by promotion cluster
     const PROMO_COLORS = {
-        'World Wonder Ring Stardom': '#e91e63',
-        'Dream Star Fighting Marigold': '#ff9800',
-        'Tokyo Joshi Pro-Wrestling': '#2196f3',
+        'World Wonder Ring Stardom': '#f0f0f2',
+        'Dream Star Fighting Marigold': '#ffce3d',
+        'Tokyo Joshi Pro-Wrestling': '#ff4fa8',
         'World Wrestling Entertainment': '#ffd700',
-        'All Elite Wrestling': '#4caf50',
-        'Ice Ribbon': '#00bcd4',
-        'Sendai Girls\' Pro Wrestling': '#9c27b0',
-        'PURE-J': '#ff5722',
+        'All Elite Wrestling': '#00ff00',
+        'Ice Ribbon': '#7fd8f0',
+        'Sendai Girls\' Pro Wrestling': '#5b82ff',
+        'PURE-J': '#ff8a5c',
         'Actwres girl\'Z': '#8bc34a',
         'Consejo Mundial De Lucha Libre': '#795548',
-        'Freelancer': '#607d8b'
+        'Freelancer': '#8a8a94'
     };
 
     function getColor(promotion) {
@@ -901,7 +868,7 @@
                 // Highlight full branch: path to root + all descendants
                 const branch = getBranch(d);
                 treeLinks
-                    .attr('stroke', l => (branch.has(l.source) && branch.has(l.target)) ? 'var(--accent, #e91e63)' : (l.target.depth === 1 ? '#888' : '#555'))
+                    .attr('stroke', l => (branch.has(l.source) && branch.has(l.target)) ? 'var(--gold, #ffd700)' : (l.target.depth === 1 ? '#888' : '#555'))
                     .attr('stroke-opacity', l => (branch.has(l.source) && branch.has(l.target)) ? 1 : 0.1)
                     .attr('stroke-width', l => (branch.has(l.source) && branch.has(l.target)) ? 3 : 0.5);
                 
@@ -1042,14 +1009,14 @@
             .sort((a, b) => b.match_count - a.match_count);
 
         infoPanel.innerHTML = `
-            <h3>${d.name} — ${connections.length} connections</h3>
+            <h3 class="section-label">${d.name} — ${connections.length} connections</h3>
             <div style="margin-bottom:8px; color:var(--text-secondary); font-size:0.8rem">
                 ELO: ${Math.round(d.elo)} · ${d.matches.toLocaleString()} matches · ${d.promotion}
                 · <a href="/wrestler/${d.id}" style="color:var(--accent);">View Profile →</a>
             </div>
             <div class="info-connections">
                 ${connections.slice(0, 20).map(c => `
-                    <div class="info-connection" onclick="selectNodeById(${c.otherId})">
+                    <div class="info-connection card" onclick="selectNodeById(${c.otherId})">
                         ${c.otherName} <span class="count">${c.match_count}</span>
                     </div>
                 `).join('')}
@@ -1126,7 +1093,7 @@
         // Wrestler cards
         let html = '<div class="h2h-wrestlers">';
         for (const [id, w] of selectedWrestlers) {
-            html += `<div class="h2h-wrestler-card"><span class="name">${w.name}</span> · <span class="elo">ELO ${w.elo}</span></div>`;
+            html += `<div class="h2h-wrestler-card card"><span class="name">${w.name}</span> · <span class="elo">ELO ${w.elo}</span></div>`;
         }
         html += '</div>';
 
@@ -1135,14 +1102,14 @@
             html += '<div class="h2h-pairs">';
             for (const p of data.pairs) {
                 html += `
-                    <div class="h2h-pair-card">
+                    <div class="h2h-pair-card card">
                         <div><strong>${p.wrestler1_name}</strong></div>
                         <div class="vs">vs</div>
                         <div><strong>${p.wrestler2_name}</strong></div>
                         <div style="margin-top:8px;">
                             <div class="stat"><span>Total Shared Matches</span><strong>${p.total_matches}</strong></div>
-                            <div class="stat"><span>🤼 As Opponents</span><strong>${p.as_opponents}</strong></div>
-                            <div class="stat"><span>🤝 As Partners</span><strong>${p.as_partners}</strong></div>
+                            <div class="stat"><span> As Opponents</span><strong>${p.as_opponents}</strong></div>
+                            <div class="stat"><span> As Partners</span><strong>${p.as_partners}</strong></div>
                         </div>
                         ${p.as_opponents > 0 ? `
                         <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border);">
@@ -1176,18 +1143,18 @@
             html += `
                 <h3 style="margin-bottom:8px;">Shared Match History (${data.matches.length})</h3>
                 <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
-                    <select id="h2hFilterSize" onchange="filterH2HMatches()" style="background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-primary); padding:4px 8px; border-radius:4px; font-size:0.8rem;">
+                    <select id="h2hFilterSize" onchange="filterH2HMatches()" style="padding:4px 8px; font-size:0.8rem;">
                         <option value="">All Match Types</option>
                         <option value="singles">Singles</option>
                         <option value="tag">Tag</option>
                         <option value="multi">Multi-Person</option>
                     </select>
-                    <select id="h2hFilterRel" onchange="filterH2HMatches()" style="background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-primary); padding:4px 8px; border-radius:4px; font-size:0.8rem;">
+                    <select id="h2hFilterRel" onchange="filterH2HMatches()" style="padding:4px 8px; font-size:0.8rem;">
                         <option value="">Opponents & Partners</option>
                         <option value="opponents">Opponents Only</option>
                         <option value="partners">Partners Only</option>
                     </select>
-                    <select id="h2hFilterTitle" onchange="filterH2HMatches()" style="background:var(--bg-secondary); border:1px solid var(--border); color:var(--text-primary); padding:4px 8px; border-radius:4px; font-size:0.8rem;">
+                    <select id="h2hFilterTitle" onchange="filterH2HMatches()" style="padding:4px 8px; font-size:0.8rem;">
                         <option value="">All Matches</option>
                         <option value="title">Title Matches Only</option>
                     </select>
@@ -1230,8 +1197,8 @@
 
         list.innerHTML = filtered.map(m => {
             const date = m.date ? m.date.slice(0, 10) : '?';
-            const relIcon = m.relationship === 'partners' ? '🤝' : '🤼';
-            const titleBadge = m.is_title_match ? '<span style="background:#ffd700; color:#000; padding:1px 5px; border-radius:3px; font-size:0.7rem; font-weight:700; margin-left:4px;">TITLE</span>' : '';
+            const relIcon = m.relationship === 'partners' ? '' : '';
+            const titleBadge = m.is_title_match ? '<span style="background:#ffd700; color:#000; padding:1px 5px; border-radius: 0; font-size:0.7rem; font-weight:700; margin-left:4px;">TITLE</span>' : '';
             const sizeBadge = m.match_size === 'singles' ? '1v1' : m.match_size === 'tag' ? 'TAG' : `${m.participant_count}P`;
 
             // Group participants by team
@@ -1245,7 +1212,7 @@
             const teamHtml = teamKeys.map(t => {
                 return teams[t].map(p => {
                     const bold = p.is_selected ? 'font-weight:700;' : '';
-                    const color = p.is_winner ? 'color:#4caf50;' : m.is_draw ? 'color:#ff9800;' : 'color:#f44336;';
+                    const color = p.is_winner ? 'color:#00ff00;' : m.is_draw ? 'color:#ff9800;' : 'color:#ff1f1f;';
                     const icon = p.is_winner ? ' ✓' : m.is_draw ? ' =' : ' ✗';
                     return `<span style="${bold}${color}">${p.wrestler_name}${icon}</span>`;
                 }).join(' & ');
@@ -1306,7 +1273,7 @@
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js?v=1"></script>
-    <script src="/static/js/auth.js?v=1"></script>
-    <script src="/static/js/footer.js?v=1"></script>
+    <script src="/static/js/auth.js?v=3"></script>
+    <script src="/static/js/footer.js?v=2"></script>
 </body>
 </html>

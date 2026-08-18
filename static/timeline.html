@@ -16,7 +16,7 @@
     <meta name="twitter:description" content="Track how joshi wrestler ELO ratings have changed over time. View historical snapshots and era leaders.">
     <link rel="icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/css/shared.css?v=2">
+    <link rel="stylesheet" href="/static/css/shared.css?v=14">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
     <style>
@@ -53,7 +53,6 @@
         .chart-container { height: 400px; margin: 20px 0; }
         .section-title {
             font-size: 1.2rem;
-            font-weight: 700;
             margin: 32px 0 8px;
             display: flex;
             align-items: center;
@@ -65,10 +64,6 @@
             margin-bottom: 16px;
         }
         .era-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 20px;
             margin-bottom: 16px;
         }
         .snapshot-grid {
@@ -98,7 +93,7 @@
             transition: background 0.15s;
         }
         .snapshot-table tr:hover {
-            background: var(--bg-secondary);
+            background: var(--bg-hover);
         }
         .snapshot-rank {
             font-weight: 800;
@@ -108,12 +103,11 @@
         .snapshot-rank.r1 { color: var(--gold); }
         .snapshot-rank.r2 { color: var(--silver); }
         .snapshot-rank.r3 { color: var(--bronze); }
-        .snapshot-momentum-high { color: #4ade80; font-weight: 600; }
+        .snapshot-momentum-high { color: #00ff00; font-weight: 600; }
         .snapshot-momentum-low { color: var(--red); font-weight: 600; }
         .snapshot-momentum-neutral { color: var(--text-muted); }
         .rivalry-table td { font-size: 0.85rem; }
         .rivalry-record {
-            font-variant-numeric: tabular-nums;
             font-size: 0.8rem;
         }
         .rivalry-span {
@@ -123,7 +117,7 @@
         .era-badge {
             display: inline-block;
             padding: 2px 10px;
-            border-radius: 20px;
+            border-radius: 0;
             font-size: 0.7rem;
             font-weight: 700;
             text-transform: uppercase;
@@ -131,8 +125,8 @@
         }
         .era-pioneer { background: rgba(255, 152, 0, 0.15); color: #ff9800; }
         .era-golden { background: rgba(255, 215, 0, 0.15); color: #ffd700; }
-        .era-modern { background: rgba(233, 30, 99, 0.15); color: #e91e63; }
-        .era-current { background: rgba(76, 175, 80, 0.15); color: #4caf50; }
+        .era-modern { background: rgba(255, 79, 168, 0.15); color: #ff4fa8; }
+        .era-current { background: rgba(0, 255, 0, 0.15); color: #00ff00; }
 
         .year-scrubber {
             position: relative;
@@ -161,22 +155,22 @@
         }
         .btn-group .btn.active {
             background: var(--accent);
-            color: white;
+            color: #000;
         }
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/nav.js?v=7"></script>
     <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
         <div class="page-header">
-            <h1>⏳ The Story of Joshi Wrestling</h1>
+            <h1>The Story of Joshi Wrestling</h1>
             <p>90 years of women's wrestling told through data — from 1930s pioneers to today's stars</p>
         </div>
 
         <!-- Time Machine -->
-        <div class="era-card">
-            <div class="section-title">🕰️ Time Machine</div>
+        <div class="card era-card">
+            <div class="section-label section-title"> Time Machine</div>
             <div class="section-desc">Scrub through time to see who ruled joshi at any point in history</div>
             <div class="year-scrubber">
                 <div class="year-display" id="yearDisplay">1995</div>
@@ -188,8 +182,8 @@
         </div>
 
         <!-- ELO Race Chart -->
-        <div class="era-card">
-            <div class="section-title">📈 The ELO Race</div>
+        <div class="card era-card">
+            <div class="section-label section-title"> The ELO Race</div>
             <div class="section-desc">Top 10 wrestlers' ELO over time — watch the lead change hands across eras</div>
             <div class="timeline-controls">
                 <div class="btn-group">
@@ -207,8 +201,8 @@
         </div>
 
         <!-- Activity Chart -->
-        <div class="era-card">
-            <div class="section-title">🎪 The Growth of Joshi</div>
+        <div class="card era-card">
+            <div class="section-label section-title"> The Growth of Joshi</div>
             <div class="section-desc">Matches per year and active wrestlers — the rise, boom, and evolution</div>
             <div class="chart-container">
                 <canvas id="activityChart"></canvas>
@@ -216,8 +210,8 @@
         </div>
 
         <!-- Greatest Rivalries -->
-        <div class="era-card">
-            <div class="section-title">⚔️ Greatest Rivalries</div>
+        <div class="card era-card">
+            <div class="section-label section-title"> Greatest Rivalries</div>
             <div class="section-desc">The most prolific matchups in joshi history — decades of war</div>
             <div class="table-wrapper">
                 <table>
@@ -240,8 +234,8 @@
         </div>
 
         <!-- Era Summaries -->
-        <div class="era-card">
-            <div class="section-title">📜 Era Breakdown</div>
+        <div class="card era-card">
+            <div class="section-label section-title"> Era Breakdown</div>
             <div class="section-desc">Key stats by decade</div>
             <div id="eraBreakdown" class="stats-grid"></div>
         </div>
@@ -249,9 +243,9 @@
 
     <script>
     const COLORS = [
-        '#e91e63', '#2196f3', '#ffd700', '#4caf50', '#ff9800',
+        '#ff4fa8', '#5b82ff', '#ffd700', '#00ff00', '#ff9800',
         '#9c27b0', '#00bcd4', '#ff5722', '#8bc34a', '#e040fb',
-        '#795548', '#607d8b', '#f44336', '#3f51b5', '#009688'
+        '#795548', '#607d8b', '#ff1f1f', '#3f51b5', '#009688'
     ];
 
     let eloLeadersData = null;
@@ -309,7 +303,7 @@
                                     <td style="font-weight: 800; color: var(--accent);">${Math.round(w.elo)}</td>
                                     <td><span class="${mClass(w.momentum)}">${mDisp(w.momentum)}</span></td>
                                     <td>
-                                        <span style="color: #4ade80;">${w.wins}W</span> ·
+                                        <span style="color: #00ff00;">${w.wins}W</span> ·
                                         <span style="color: var(--red);">${w.losses}L</span> ·
                                         <span style="color: var(--text-muted);">${w.draws}D</span>
                                     </td>
@@ -439,8 +433,8 @@
                     {
                         label: 'Matches',
                         data: eraStatsData.map(d => d.matches),
-                        backgroundColor: '#e91e6355',
-                        borderColor: '#e91e63',
+                        backgroundColor: '#ff4fa855',
+                        borderColor: '#ff4fa8',
                         borderWidth: 1,
                         yAxisID: 'y'
                     },
@@ -448,8 +442,8 @@
                         label: 'Active Wrestlers',
                         data: eraStatsData.map(d => d.active_wrestlers),
                         type: 'line',
-                        borderColor: '#2196f3',
-                        backgroundColor: '#2196f333',
+                        borderColor: '#5b82ff',
+                        backgroundColor: '#5b82ff33',
                         borderWidth: 2,
                         pointRadius: 2,
                         fill: true,
@@ -459,7 +453,7 @@
                         label: 'Debuts',
                         data: eraStatsData.map(d => d.debuts),
                         type: 'line',
-                        borderColor: '#4caf50',
+                        borderColor: '#00ff00',
                         borderWidth: 2,
                         pointRadius: 2,
                         yAxisID: 'y1'
@@ -484,16 +478,16 @@
                     y: {
                         type: 'linear',
                         position: 'left',
-                        ticks: { color: '#e91e63' },
+                        ticks: { color: '#ff4fa8' },
                         grid: { color: '#1e1e2a' },
-                        title: { display: true, text: 'Matches', color: '#e91e63' }
+                        title: { display: true, text: 'Matches', color: '#ff4fa8' }
                     },
                     y1: {
                         type: 'linear',
                         position: 'right',
-                        ticks: { color: '#2196f3' },
+                        ticks: { color: '#5b82ff' },
                         grid: { display: false },
-                        title: { display: true, text: 'Wrestlers', color: '#2196f3' }
+                        title: { display: true, text: 'Wrestlers', color: '#5b82ff' }
                     }
                 }
             }
@@ -517,14 +511,14 @@
         });
 
         const eraNames = {
-            1950: ['🌅 Pioneer Era', 'era-pioneer', '1950–1959'],
-            1960: ['🎌 Foundation', 'era-pioneer', '1960–1969'],
-            1970: ['⭐ Rising', 'era-pioneer', '1970–1979'],
-            1980: ['🔥 Boom Begins', 'era-golden', '1980–1989'],
-            1990: ['👑 Golden Age', 'era-golden', '1990–1999'],
-            2000: ['🌍 Global Expansion', 'era-modern', '2000–2009'],
-            2010: ['💎 Modern Renaissance', 'era-modern', '2010–2019'],
-            2020: ['⚡ New Generation', 'era-current', '2020–present']
+            1950: [' Pioneer Era', 'era-pioneer', '1950–1959'],
+            1960: [' Foundation', 'era-pioneer', '1960–1969'],
+            1970: [' Rising', 'era-pioneer', '1970–1979'],
+            1980: [' Boom Begins', 'era-golden', '1980–1989'],
+            1990: [' Golden Age', 'era-golden', '1990–1999'],
+            2000: [' Global Expansion', 'era-modern', '2000–2009'],
+            2010: [' Modern Renaissance', 'era-modern', '2010–2019'],
+            2020: [' New Generation', 'era-current', '2020–present']
         };
 
         const container = document.getElementById('eraBreakdown');
@@ -569,11 +563,11 @@
                 <tr>
                     <td>${i + 1}</td>
                     <td><a href="/wrestler/${r.wrestler1_id}">${r.wrestler1_name}</a></td>
-                    <td style="text-align:center">⚔️</td>
+                    <td style="text-align:center"></td>
                     <td><a href="/wrestler/${r.wrestler2_id}">${r.wrestler2_name}</a></td>
                     <td><strong>${r.match_count.toLocaleString()}</strong></td>
                     <td class="rivalry-record" style="font-size:0.75rem">${breakdown}</td>
-                    <td class="rivalry-record">
+                    <td class="record rivalry-record">
                         <span class="w">${r.w1_wins}</span>-<span class="l">${r.w2_wins}</span>-<span class="d">${r.draws}</span>
                     </td>
                     <td class="rivalry-span">${firstYear}–${lastYear}<br>${r.span_years}yr</td>
@@ -592,7 +586,7 @@
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js?v=1"></script>
-    <script src="/static/js/auth.js?v=1"></script>
-    <script src="/static/js/footer.js?v=1"></script>
+    <script src="/static/js/auth.js?v=3"></script>
+    <script src="/static/js/footer.js?v=2"></script>
 </body>
 </html>

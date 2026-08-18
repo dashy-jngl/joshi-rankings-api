@@ -16,23 +16,15 @@
     <meta name="twitter:description" content="All-time records and statistics for women's pro wrestling — highest ELO, longest win streaks, and more.">
     <link rel="icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/css/shared.css?v=2">
+    <link rel="stylesheet" href="/static/css/shared.css?v=14">
     <style>
         .records-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 16px;
         }
-        .record-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 20px;
-        }
         .record-card h3 {
-            color: var(--accent);
             font-size: 0.9rem;
-            margin-bottom: 12px;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -83,12 +75,12 @@
             flex: 1;
             height: 24px;
             background: var(--bg-secondary);
-            border-radius: 4px;
+            border-radius: 0;
             overflow: hidden;
         }
         .tier-bar .fill {
             height: 100%;
-            border-radius: 4px;
+            border-radius: 0;
             display: flex;
             align-items: center;
             justify-content: flex-end;
@@ -100,11 +92,11 @@
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/nav.js?v=7"></script>
     <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
         <div class="page-header">
-            <h1>📈 Stats & Records</h1>
+            <h1>Stats & Records</h1>
             <p>Fun facts and record holders across the joshi scene</p>
         </div>
 
@@ -155,8 +147,8 @@
             <div class="loading">Crunching numbers...</div>
         </div>
 
-        <div class="tier-distribution card" style="margin-top: 24px;">
-            <h3 style="color: var(--accent); margin-bottom: 16px;">Tier Distribution</h3>
+        <div class="tier-distribution card">
+            <h3 class="section-label">Tier Distribution</h3>
             <div id="tierBars"></div>
         </div>
     </div>
@@ -184,8 +176,8 @@
 
         function recordCard(title, icon, entries) {
             return `
-                <div class="record-card">
-                    <h3>${icon} ${title}</h3>
+                <div class="record-card card">
+                    <h3 class="section-label">${title}</h3>
                     ${entries.map((e, i) => `
                         <div class="record-entry">
                             <span class="pos">${i + 1}.</span>
@@ -212,12 +204,14 @@
         async function loadStats() {
             if (tierDefs.length === 0) await loadTiers();
             if (!allWrestlersRaw) {
-                const [wrestlers, matchData] = await Promise.all([
+                const [wrestlers, matchData, peakData] = await Promise.all([
                     fetch('/api/wrestlers').then(r => r.json()),
                     fetch('/api/matches/count').then(r => r.json()),
+                    fetch('/api/peak-elos').then(r => r.json()).catch(() => ({ peaks: {} })),
                 ]);
                 allWrestlersRaw = wrestlers;
                 window._matchCount = matchData.count;
+                window._peaks = peakData.peaks || {};
 
                 if (!filtersPopulated) {
                     const promos = [...new Set(wrestlers.map(w => w.promotion).filter(Boolean))].sort();
@@ -280,33 +274,40 @@
 
             const records = document.getElementById('records');
             records.innerHTML = [
-                recordCard('Highest ELO', '🏆',
-                    sorted.slice(0, 10).map(w => ({ ...w, display: Math.round(w.elo).toString() }))),
+                recordCard('Peak ELO (all-time high)', '',
+                    wrestlers
+                        .map(w => {
+                            const p = window._peaks[w.id];
+                            return { ...w, peak: p ? p.peak : w.elo, peakDate: p ? p.date : null };
+                        })
+                        .sort((a, b) => b.peak - a.peak).slice(0, 10)
+                        .map(w => ({ ...w, display: `${Math.round(w.peak)}` +
+                            (w.peakDate ? ` <span style="color:var(--text-muted);font-size:0.72rem">${w.peakDate.slice(0, 4)}</span>` : '') }))),
 
-                recordCard('Most Matches', '📊',
+                recordCard('Most Matches', '',
                     [...withMatches].sort((a, b) => b.totalMatches - a.totalMatches).slice(0, 10)
                         .map(w => ({ ...w, display: w.totalMatches.toLocaleString() }))),
 
-                recordCard('Most Wins', '✅',
+                recordCard('Most Wins', '',
                     [...wrestlers].sort((a, b) => b.wins - a.wins).slice(0, 10)
                         .map(w => ({ ...w, display: w.wins.toLocaleString() }))),
 
-                recordCard('Best Win Rate (50+ matches)', '🎯',
+                recordCard('Best Win Rate (50+ matches)', '',
                     withMatches.filter(w => w.totalMatches >= 50).sort((a, b) => b.winPct - a.winPct).slice(0, 10)
                         .map(w => ({ ...w, display: Math.round(w.winPct) + '%' }))),
 
-                recordCard('Lowest ELO', '📉',
+                recordCard('Lowest ELO', '',
                     [...sorted].reverse().slice(0, 10).map(w => ({ ...w, display: Math.round(w.elo).toString() }))),
 
-                recordCard('Most Losses', '💀',
+                recordCard('Most Losses', '',
                     [...wrestlers].sort((a, b) => b.losses - a.losses).slice(0, 10)
                         .map(w => ({ ...w, display: w.losses.toLocaleString() }))),
 
-                recordCard('Most Draws', '🤝',
+                recordCard('Most Draws', '',
                     [...wrestlers].sort((a, b) => b.draws - a.draws).slice(0, 10)
                         .map(w => ({ ...w, display: w.draws.toLocaleString() }))),
 
-                recordCard('Worst Win Rate (50+ matches)', '😬',
+                recordCard('Worst Win Rate (50+ matches)', '',
                     withMatches.filter(w => w.totalMatches >= 50).sort((a, b) => a.winPct - b.winPct).slice(0, 10)
                         .map(w => ({ ...w, display: Math.round(w.winPct) + '%' }))),
             ].join('');
@@ -367,13 +368,13 @@
 
                 const serverCards = [];
                 const cardData = [
-                    ['Longest Win Streak', '🔥', data.longest_win_streak, e => e.streak + ' wins'],
-                    ['Longest Losing Streak', '💀', data.longest_lose_streak, e => e.streak + ' losses'],
-                    ['Most Title Matches', '🏆', data.most_title_matches, e => e.count.toString()],
-                    ['Most KO/TKO Wins', '💥', data.most_ko_wins, e => e.count.toString()],
-                    ['Most Losses by Count Out', '⏰', data.most_count_outs, e => e.count.toString()],
-                    ['Most DQ Wins', '🚫', data.most_dq_wins, e => e.count.toString()],
-                    ['Most DQ Losses', '🟥', data.most_dq_losses, e => e.count.toString()],
+                    ['Longest Win Streak', '', data.longest_win_streak, e => e.streak + ' wins'],
+                    ['Longest Losing Streak', '', data.longest_lose_streak, e => e.streak + ' losses'],
+                    ['Most Title Matches', '', data.most_title_matches, e => e.count.toString()],
+                    ['Most KO/TKO Wins', '', data.most_ko_wins, e => e.count.toString()],
+                    ['Most Losses by Count Out', '', data.most_count_outs, e => e.count.toString()],
+                    ['Most DQ Wins', '', data.most_dq_wins, e => e.count.toString()],
+                    ['Most DQ Losses', '', data.most_dq_losses, e => e.count.toString()],
                 ];
 
                 for (const [title, icon, entries, displayFn] of cardData) {
@@ -395,7 +396,7 @@
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js?v=1"></script>
-    <script src="/static/js/auth.js?v=1"></script>
-    <script src="/static/js/footer.js?v=1"></script>
+    <script src="/static/js/auth.js?v=3"></script>
+    <script src="/static/js/footer.js?v=2"></script>
 </body>
 </html>

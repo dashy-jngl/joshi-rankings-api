@@ -16,7 +16,7 @@
     <meta name="twitter:description" content="Joshitori admin control panel.">
     <link rel="icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/css/shared.css?v=2">
+    <link rel="stylesheet" href="/static/css/shared.css?v=14">
     <style>
         /* Admin-specific layout */
         .api-key-box {
@@ -27,12 +27,6 @@
             padding-right: 12px;
         }
         .api-key-box input {
-            background: var(--bg-primary);
-            border: 1px solid var(--border);
-            color: #fff;
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-size: 0.85rem;
             width: 180px;
         }
 
@@ -56,8 +50,6 @@
 
         /* Color button variants */
         .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        .btn-pink { background: var(--accent); color: white; }
-        .btn-pink:hover { background: #c2185b; }
         .btn-green { background: var(--green); color: white; }
         .btn-green:hover { background: #388e3c; }
         .btn-red { background: var(--red); color: white; }
@@ -83,7 +75,7 @@
         .badge {
             display: inline-block;
             padding: 2px 8px;
-            border-radius: 10px;
+            border-radius: 0;
             font-size: 0.75rem;
             font-weight: 600;
         }
@@ -92,9 +84,6 @@
 
         /* Log */
         .log {
-            background: var(--bg-primary);
-            border: 1px solid var(--border);
-            border-radius: 4px;
             padding: 12px;
             font-family: 'Fira Code', monospace;
             font-size: 0.8rem;
@@ -116,9 +105,6 @@
             overflow-y: auto;
         }
         .wrestler-card {
-            background: var(--bg-hover);
-            border: 1px solid var(--border);
-            border-radius: 6px;
             padding: 12px;
             cursor: pointer;
             transition: all 0.2s;
@@ -131,12 +117,10 @@
         .wrestler-record { color: var(--text-muted); font-size: 0.8rem; }
 
         /* Detail panel */
-        .detail-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
         .detail-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
         .detail-name { font-size: 1.4rem; font-weight: 700; }
         .detail-elo { font-size: 2rem; font-weight: 800; color: var(--accent); }
         .detail-section { margin-top: 15px; }
-        .detail-section h3 { font-size: 0.9rem; color: var(--accent); margin-bottom: 8px; }
         .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
         .detail-field { display: flex; justify-content: space-between; padding: 4px 0; }
         .detail-field .label { color: var(--text-muted); font-size: 0.85rem; }
@@ -144,21 +128,16 @@
         .social-link { color: var(--blue); text-decoration: none; font-size: 0.85rem; margin-right: 12px; }
         .social-link:hover { text-decoration: underline; }
 
-        /* Stats bar */
-        .stats-bar {
-            display: flex;
-            gap: 20px;
-            padding: 15px 30px;
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border);
+        /* Stats bar — shared .stats-grid/.stat-card, constrained to admin width */
+        #statsBar {
+            max-width: 1400px;
+            margin: 20px auto 0;
+            padding: 0 20px;
         }
-        .stat { text-align: center; }
-        .stat-value { font-size: 1.5rem; font-weight: 800; color: var(--accent); }
-        .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; }
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/nav.js?v=7"></script>
     <script src="/static/js/wrestler-search.js?v=1"></script>
     <script>
         // Admin-only: inject API key box into nav top bar
@@ -167,31 +146,31 @@
             if (!navRight) return;
             const box = document.createElement('div');
             box.className = 'api-key-box';
-            box.innerHTML = '<span id="authStatus" style="color:#4caf50;font-size:0.85rem;margin-right:8px"></span><input type="text" id="apiKey" placeholder="API Key (fallback)" title="Auto-authenticates if logged in as admin" autocomplete="off" style="-webkit-text-security:disc;" />';
+            box.innerHTML = '<span id="authStatus" style="color:#00ff00;font-size:0.85rem;margin-right:8px"></span><input type="text" id="apiKey" placeholder="API Key (fallback)" title="Auto-authenticates if logged in as admin" autocomplete="off" style="-webkit-text-security:disc;" />';
             navRight.insertBefore(box, navRight.firstChild);
         })();
     </script>
 
-    <div class="stats-bar" id="statsBar">
-        <div class="stat">
-            <div class="stat-value" id="statWrestlers">-</div>
-            <div class="stat-label">Wrestlers</div>
+    <div class="stats-grid" id="statsBar">
+        <div class="stat-card">
+            <div class="value" id="statWrestlers">-</div>
+            <div class="label">Wrestlers</div>
         </div>
-        <div class="stat">
-            <div class="stat-value" id="statMatches">-</div>
-            <div class="stat-label">Matches</div>
+        <div class="stat-card">
+            <div class="value" id="statMatches">-</div>
+            <div class="label">Matches</div>
         </div>
-        <div class="stat">
-            <div class="stat-value" id="statTitles">-</div>
-            <div class="stat-label">Titles</div>
+        <div class="stat-card">
+            <div class="value" id="statTitles">-</div>
+            <div class="label">Titles</div>
         </div>
-        <div class="stat">
-            <div class="stat-value" id="statTopElo">-</div>
-            <div class="stat-label">Top ELO</div>
+        <div class="stat-card">
+            <div class="value" id="statTopElo">-</div>
+            <div class="label">Top ELO</div>
         </div>
-        <div class="stat">
-            <div class="stat-value" id="statSkipped">-</div>
-            <div class="stat-label">Skipped (Male)</div>
+        <div class="stat-card">
+            <div class="value" id="statSkipped">-</div>
+            <div class="label">Skipped (Male)</div>
         </div>
     </div>
 
@@ -201,20 +180,20 @@
     <div class="admin-container">
         <!-- Scraper Controls -->
         <div class="card">
-            <h2>🕷️ Scraper Controls</h2>
+            <h2>Scraper Controls</h2>
             <div class="btn-group" style="margin-bottom: 15px;">
-                <button class="btn btn-pink" onclick="runCollect()">Collect Matches</button>
+                <button class="btn btn-accent" onclick="runCollect()">Collect Matches</button>
                 <button class="btn btn-blue" onclick="runRecalculate()">Recalculate ELO</button>
             </div>
             <div class="btn-group" style="margin-bottom: 15px;">
-                <button class="btn btn-purple" onclick="collectTitles()">🏆 Collect Titles</button>
-                <button class="btn btn-orange" onclick="collectPromotions()">🏢 Collect Promotions</button>
-                <button class="btn btn-blue" onclick="runValidate()">🔍 Validate & Fix</button>
+                <button class="btn btn-purple" onclick="collectTitles()"> Collect Titles</button>
+                <button class="btn btn-orange" onclick="collectPromotions()"> Collect Promotions</button>
+                <button class="btn btn-blue" onclick="runValidate()"> Validate & Fix</button>
             </div>
             <div class="btn-group" style="margin-bottom: 15px;">
-                <button class="btn btn-orange" onclick="runMatches()">🕷️ Run Match Update</button>
-                <button class="btn btn-purple" onclick="runProfiles()">👤 Run Profile Refresh</button>
-                <button class="btn btn-pink" id="pfpStartBtn" onclick="startPfpUpdate()">🖼️ PFP Update</button>
+                <button class="btn btn-orange" onclick="runMatches()"> Run Match Update</button>
+                <button class="btn btn-purple" onclick="runProfiles()"> Run Profile Refresh</button>
+                <button class="btn btn-accent" id="pfpStartBtn" onclick="startPfpUpdate()"> PFP Update</button>
             </div>
             <div class="btn-group" style="margin-bottom: 15px;">
                 <button class="btn btn-green" id="cronStartBtn" onclick="cronStart()">Start Cron</button>
@@ -231,7 +210,7 @@
             </div>
 
             <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
-                <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">🕷️ Match Scraper</h3>
+                <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">Match Scraper</h3>
                 <div class="status-row">
                     <span class="status-label">Status</span>
                     <span id="matchScrapeStatus"><span class="badge badge-off">IDLE</span></span>
@@ -251,7 +230,7 @@
             </div>
 
             <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
-                <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">👤 Profile Refresher</h3>
+                <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">Profile Refresher</h3>
                 <div class="status-row">
                     <span class="status-label">Status</span>
                     <span id="profileRefreshStatus"><span class="badge badge-off">IDLE</span></span>
@@ -273,13 +252,13 @@
                 <span class="status-label">Crawl Delay</span>
                 <span class="status-value">
                     <span id="currentDelay">—</span>s
-                    <input type="number" id="delayInput" min="0" style="width:70px;margin-left:8px;padding:4px;border-radius:4px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);" placeholder="sec">
+                    <input type="number" id="delayInput" min="0" style="width:70px;margin-left:8px;padding:4px;" placeholder="sec">
                     <button class="btn btn-blue" style="padding:4px 10px;font-size:0.8rem;margin-left:4px;" onclick="updateDelay()">Update</button>
                 </span>
             </div>
 
             <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
-                <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">🖼️ PFP Update (Twitter)</h3>
+                <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">PFP Update (Twitter)</h3>
                 <div class="status-row">
                     <span class="status-label">Status</span>
                     <span id="pfpStatus"><span class="badge badge-off">IDLE</span></span>
@@ -289,13 +268,13 @@
                     <span class="status-value" id="pfpProgress">—</span>
                 </div>
                 <div style="margin-top: 8px;">
-                    <div style="background: #111; border-radius: 4px; height: 6px; overflow: hidden;">
+                    <div style="background: var(--card); height: 6px; overflow: hidden;">
                         <div id="pfpBar" style="background: var(--accent); height: 100%; width: 0%; transition: width 0.3s;"></div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 16px; margin-top: 10px; font-size: 0.85rem;">
                     <span style="color: var(--green);">✓ <span id="pfpOk">0</span></span>
-                    <span style="color: #ff9800;">⚠ <span id="pfpClosed">0</span> closed</span>
+                    <span style="color: #ff9800;"> <span id="pfpClosed">0</span> closed</span>
                     <span style="color: var(--red);">✗ <span id="pfpFail">0</span> failed</span>
                 </div>
             </div>
@@ -303,25 +282,23 @@
 
         <!-- Activity Log -->
         <div class="card">
-            <h2>📋 Activity Log</h2>
-            <div class="log" id="activityLog">
+            <h2>Activity Log</h2>
+            <div class="log card" id="activityLog">
                 <div class="log-entry info">Dashboard loaded. Enter API key to use controls.</div>
             </div>
         </div>
 
         <!-- Wrestler List -->
         <div class="card full-width">
-            <h2>👊 Wrestlers (<span id="wrestlerCount">0</span>)</h2>
+            <h2>Wrestlers (<span id="wrestlerCount">0</span>)</h2>
             <div style="margin-bottom: 12px; display: flex; gap: 8px;">
-                <input type="text" id="searchBox" placeholder="Search wrestlers..." 
-                    style="background: #111; border: 1px solid #333; color: #fff; padding: 6px 12px; border-radius: 4px; flex: 1;"
+                <input type="text" id="searchBox" placeholder="Search wrestlers..."
+                    style="flex: 1;"
                     oninput="filterWrestlers()" />
-                <select id="promoFilter" onchange="filterWrestlers()"
-                    style="background: #111; border: 1px solid #333; color: #fff; padding: 6px 12px; border-radius: 4px;">
+                <select id="promoFilter" onchange="filterWrestlers()">
                     <option value="">All Promotions</option>
                 </select>
-                <select id="sortBy" onchange="sortWrestlers()"
-                    style="background: #111; border: 1px solid #333; color: #fff; padding: 6px 12px; border-radius: 4px;">
+                <select id="sortBy" onchange="sortWrestlers()">
                     <option value="elo">Sort: ELO ↓</option>
                     <option value="name">Sort: Name</option>
                     <option value="wins">Sort: Wins ↓</option>
@@ -335,34 +312,34 @@
 
         <!-- Wrestler Detail -->
         <div class="card full-width" id="detailPanel" style="display: none;">
-            <h2>📋 Wrestler Detail</h2>
+            <h2>Wrestler Detail</h2>
             <div id="detailContent"></div>
         </div>
 
         <!-- User Management -->
         <div class="card full-width">
-            <h2>👥 User Management</h2>
+            <h2>User Management</h2>
             <div style="margin-bottom: 15px;">
                 <button class="btn btn-green" onclick="showAddUserForm()">+ Add User</button>
             </div>
 
-            <div id="addUserForm" style="display:none; background:#111; border:1px solid #333; border-radius:6px; padding:15px; margin-bottom:15px;">
+            <div id="addUserForm" class="card" style="display:none; padding:15px; margin-bottom:15px;">
                 <div style="display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:8px; align-items:end;">
                     <div>
                         <label style="font-size:0.75rem;color:#888;">Username</label>
-                        <input type="text" id="newUsername" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:6px 10px;border-radius:4px;" />
+                        <input type="text" id="newUsername" style="width:100%;" />
                     </div>
                     <div>
                         <label style="font-size:0.75rem;color:#888;">Display Name</label>
-                        <input type="text" id="newDisplayName" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:6px 10px;border-radius:4px;" />
+                        <input type="text" id="newDisplayName" style="width:100%;" />
                     </div>
                     <div>
                         <label style="font-size:0.75rem;color:#888;">Password</label>
-                        <input type="password" id="newPassword" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:6px 10px;border-radius:4px;" />
+                        <input type="password" id="newPassword" style="width:100%;" />
                     </div>
                     <div>
                         <label style="font-size:0.75rem;color:#888;">Role</label>
-                        <select id="newRole" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:6px 10px;border-radius:4px;">
+                        <select id="newRole" style="width:100%;">
                             <option value="user">User</option>
                             <option value="moderator">Moderator</option>
                             <option value="admin">Admin</option>
@@ -371,13 +348,13 @@
                 </div>
                 <div style="margin-top:10px; display:flex; gap:8px;">
                     <button class="btn btn-green" onclick="createUser()">Create</button>
-                    <button class="btn" style="background:#333;color:#ccc;" onclick="document.getElementById('addUserForm').style.display='none'">Cancel</button>
+                    <button class="btn btn-ghost" onclick="document.getElementById('addUserForm').style.display='none'">Cancel</button>
                 </div>
             </div>
 
             <table style="width:100%; border-collapse:collapse; font-size:0.85rem;" id="usersTable">
                 <thead>
-                    <tr style="border-bottom:1px solid #333;">
+                    <tr style="border-bottom:1px solid var(--border);">
                         <th style="text-align:left;padding:8px;color:#888;">Username</th>
                         <th style="text-align:left;padding:8px;color:#888;">Display Name</th>
                         <th style="text-align:left;padding:8px;color:#888;">Role</th>
@@ -391,35 +368,35 @@
 
         <!-- Test Scrape Section -->
         <div class="card full-width">
-            <h2>🧪 Test Scrape & Validate</h2>
+            <h2>Test Scrape & Validate</h2>
             <p style="color: #888; font-size: 0.85rem; margin-bottom: 15px;">
                 Scrape specific wrestlers and validate match counts against Cagematch.
             </p>
             
             <div style="margin-bottom: 15px;">
                 <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-                    <input type="text" id="testWrestlerSearch" placeholder="Search wrestler to add..." 
-                        style="background: #111; border: 1px solid #333; color: #fff; padding: 6px 12px; border-radius: 4px; flex: 1;"
+                    <input type="text" id="testWrestlerSearch" placeholder="Search wrestler to add..."
+                        style="flex: 1;"
                         oninput="searchTestWrestlers()" />
                     <button class="btn btn-green" onclick="addFromSearch()">Add</button>
                 </div>
-                <div id="testSearchResults" style="max-height: 150px; overflow-y: auto; display: none; background: #111; border: 1px solid #333; border-radius: 4px;"></div>
+                <div id="testSearchResults" class="pop" style="max-height: 150px; overflow-y: auto; display: none;"></div>
                 
                 <div id="testWrestlerTags" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
                 </div>
             </div>
             
             <div class="btn-group" style="margin-bottom: 15px;">
-                <button class="btn btn-red" onclick="testClear()">🗑️ Clear All Match Data</button>
-                <button class="btn btn-pink" onclick="testScrape()">🕷️ Run Test Scrape</button>
-                <button class="btn btn-blue" onclick="testValidate()">🔍 Run Test Validate</button>
+                <button class="btn btn-red" onclick="testClear()"> Clear All Match Data</button>
+                <button class="btn btn-accent" onclick="testScrape()"> Run Test Scrape</button>
+                <button class="btn btn-blue" onclick="testValidate()"> Run Test Validate</button>
             </div>
             
             <div id="scrapeResultsSection" style="display: none;">
-                <h3 style="color: #e91e63; margin-bottom: 10px;">Scrape Results</h3>
+                <h3 class="section-label">Scrape Results</h3>
                 <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
                     <thead>
-                        <tr style="border-bottom: 1px solid #333;">
+                        <tr style="border-bottom: 1px solid var(--border);">
                             <th style="text-align: left; padding: 8px; color: #888;">Wrestler</th>
                             <th style="text-align: right; padding: 8px; color: #888;">CM Matches</th>
                             <th style="text-align: right; padding: 8px; color: #888;">New Stored</th>
@@ -432,10 +409,10 @@
             </div>
 
             <div id="testResultsSection" style="display: none; margin-top: 15px;">
-                <h3 style="color: #e91e63; margin-bottom: 10px;">Validation Results</h3>
+                <h3 class="section-label">Validation Results</h3>
                 <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
                     <thead>
-                        <tr style="border-bottom: 1px solid #333;">
+                        <tr style="border-bottom: 1px solid var(--border);">
                             <th style="text-align: left; padding: 8px; color: #888;">Wrestler</th>
                             <th style="text-align: right; padding: 8px; color: #888;">CM Count</th>
                             <th style="text-align: right; padding: 8px; color: #888;">DB Count</th>
@@ -454,7 +431,7 @@
     <script>
         // --- State ---
         let wrestlers = [];
-        const API = '';  // same origin
+        const API = ''; // same origin
 
         function getKey() {
             return document.getElementById('apiKey').value;
@@ -703,7 +680,7 @@
             }
 
             grid.innerHTML = list.map(w => `
-                <div class="wrestler-card" onclick="showWrestler(${w.id})" id="wcard-${w.id}">
+                <div class="wrestler-card card" onclick="showWrestler(${w.id})" id="wcard-${w.id}">
                     <div class="wrestler-name">${w.name}</div>
                     <div class="wrestler-promo">${w.promotion || 'Unknown'}</div>
                     <div class="wrestler-elo">${Math.round(w.elo)}</div>
@@ -763,7 +740,7 @@
 
                     <div class="detail-grid">
                         <div class="detail-section">
-                            <h3>Personal Info</h3>
+                            <h3 class="section-label">Personal Info</h3>
                             <div class="detail-field"><span class="label">Birthday</span><span class="value">${w.birthday && w.birthday !== '0001-01-01T00:00:00Z' ? new Date(w.birthday).toLocaleDateString() : 'Unknown'}</span></div>
                             <div class="detail-field"><span class="label">Birthplace</span><span class="value">${w.birthplace || 'Unknown'}</span></div>
                             <div class="detail-field"><span class="label">Height</span><span class="value">${w.height || 'Unknown'}</span></div>
@@ -772,18 +749,18 @@
                             <div class="detail-field"><span class="label">Style</span><span class="value">${w.wrestling_style || 'Unknown'}</span></div>
                         </div>
                         <div class="detail-section">
-                            <h3>Stats</h3>
+                            <h3 class="section-label">Stats</h3>
                             <div class="detail-field"><span class="label">ELO</span><span class="value">${Math.round(w.elo)}</span></div>
-                            <div class="detail-field"><span class="label">Wins</span><span class="value" style="color: #4caf50;">${w.wins}</span></div>
-                            <div class="detail-field"><span class="label">Losses</span><span class="value" style="color: #f44336;">${w.losses}</span></div>
+                            <div class="detail-field"><span class="label">Wins</span><span class="value" style="color: #00ff00;">${w.wins}</span></div>
+                            <div class="detail-field"><span class="label">Losses</span><span class="value" style="color: #ff1f1f;">${w.losses}</span></div>
                             <div class="detail-field"><span class="label">Draws</span><span class="value">${w.draws}</span></div>
                             <div class="detail-field"><span class="label">Win Rate</span><span class="value">${w.wins + w.losses > 0 ? Math.round(w.wins / (w.wins + w.losses) * 100) : 0}%</span></div>
                             <div class="detail-field"><span class="label">Cagematch ID</span><span class="value">${w.cagematch_id || 'N/A'}</span></div>
                         </div>
                     </div>
 
-                    ${socials ? `<div class="detail-section"><h3>Socials</h3>${socials}</div>` : ''}
-                    ${moves !== 'Unknown' ? `<div class="detail-section"><h3>Signature Moves</h3><div style="font-size: 0.85rem;">${moves}</div></div>` : ''}
+                    ${socials ? `<div class="detail-section"><h3 class="section-label">Socials</h3>${socials}</div>` : ''}
+                    ${moves !== 'Unknown' ? `<div class="detail-section"><h3 class="section-label">Signature Moves</h3><div style="font-size: 0.85rem;">${moves}</div></div>` : ''}
                 `;
 
                 panel.scrollIntoView({ behavior: 'smooth' });
@@ -817,9 +794,9 @@
         function renderTestTags() {
             const container = document.getElementById('testWrestlerTags');
             container.innerHTML = testWrestlerIds.map(id => `
-                <span style="background: #2a2a2a; padding: 4px 10px; border-radius: 4px; font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
+                <span style="background: #2a2a2a; padding: 4px 10px; border-radius: 0; font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
                     ${testWrestlerNames[id]}
-                    <span style="cursor: pointer; color: #f44336;" onclick="removeTestWrestler(${id})">&times;</span>
+                    <span style="cursor: pointer; color: #ff1f1f;" onclick="removeTestWrestler(${id})">&times;</span>
                 </span>
             `).join('');
         }
@@ -863,7 +840,7 @@
         }
 
         async function testClear() {
-            if (!confirm('⚠️ This will DELETE all matches, participants, ELO history, and momentum history. Are you sure?')) return;
+            if (!confirm(' This will DELETE all matches, participants, ELO history, and momentum history. Are you sure?')) return;
             if (!confirm('Really sure? This cannot be undone.')) return;
             addLog('Clearing all match data...', 'info');
             try {
@@ -911,7 +888,7 @@
                             <tr style="border-bottom: 1px solid #222;">
                                 <td style="padding: 6px 8px;">${r.name || 'Error'}</td>
                                 <td style="padding: 6px 8px; text-align: right;">${r.scraped_from_cm ?? '-'}</td>
-                                <td style="padding: 6px 8px; text-align: right; color: #4caf50;">${r.new_stored ?? '-'}</td>
+                                <td style="padding: 6px 8px; text-align: right; color: #00ff00;">${r.new_stored ?? '-'}</td>
                                 <td style="padding: 6px 8px; text-align: right;">${r.total_in_db ?? '-'}</td>
                             </tr>
                         `).join('');
@@ -934,7 +911,7 @@
                     const tbody = document.getElementById('testResultsBody');
                     if (data.results && data.results.length > 0) {
                         tbody.innerHTML = data.results.map(r => {
-                            const diffColor = r.diff_cm_vs_db > 0 ? '#f44336' : '#4caf50';
+                            const diffColor = r.diff_cm_vs_db > 0 ? '#ff1f1f' : '#00ff00';
                             return `
                                 <tr style="border-bottom: 1px solid #222;">
                                     <td style="padding: 6px 8px;">${r.name}</td>
@@ -969,7 +946,7 @@
         }
 
         function roleBadge(role) {
-            const colors = { admin: '#e91e63', moderator: '#2196f3', user: '#555' };
+            const colors = { admin: '#ffd700', moderator: '#5b82ff', user: '#555' };
             const bg = colors[role] || '#555';
             return `<span class="badge" style="background:${bg};color:white;">${role}</span>`;
         }
@@ -1028,11 +1005,11 @@
             const isSelf = id === currentUserId;
             const row = document.getElementById(`user-row-${id}`);
             const cells = row.querySelectorAll('td');
-            cells[1].innerHTML = `<input type="text" value="${displayName}" id="edit-dn-${id}" style="background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:4px 8px;border-radius:4px;width:120px;" />`;
+            cells[1].innerHTML = `<input type="text" value="${displayName}" id="edit-dn-${id}" style="padding:4px 8px;width:120px;" />`;
             if (isSelf) {
                 cells[2].innerHTML = roleBadge(role) + ' <span style="font-size:0.7rem;color:#666;">(you)</span>';
             } else {
-                cells[2].innerHTML = `<select id="edit-role-${id}" style="background:#0a0a0f;border:1px solid #2a2a3a;color:#fff;padding:4px 8px;border-radius:4px;">
+                cells[2].innerHTML = `<select id="edit-role-${id}" style="padding:4px 8px;">
                     <option value="user" ${role==='user'?'selected':''}>user</option>
                     <option value="moderator" ${role==='moderator'?'selected':''}>moderator</option>
                     <option value="admin" ${role==='admin'?'selected':''}>admin</option>
@@ -1040,7 +1017,7 @@
             }
             cells[4].innerHTML = `
                 <button class="btn btn-green" style="padding:4px 8px;font-size:0.75rem;" onclick="saveUser(${id},${isSelf})">Save</button>
-                <button class="btn" style="padding:4px 8px;font-size:0.75rem;background:#333;color:#ccc;" onclick="loadUsers()">Cancel</button>`;
+                <button class="btn btn-ghost" style="padding:4px 8px;font-size:0.75rem;" onclick="loadUsers()">Cancel</button>`;
         }
 
         async function saveUser(id, isSelf) {
@@ -1120,8 +1097,8 @@
                         const newEntries = data.log.slice(pfpLastLogCount);
                         for (const e of newEntries) {
                             const type = e.status === 'ok' ? 'success' : e.status === 'closed' ? 'info' : 'error';
-                            const icon = e.status === 'ok' ? '✓' : e.status === 'closed' ? '⚠' : '✗';
-                            addLog(`🖼️ ${icon} ${e.name} — ${e.detail}`, type);
+                            const icon = e.status === 'ok' ? '✓' : e.status === 'closed' ? '' : '✗';
+                            addLog(` ${icon} ${e.name} — ${e.detail}`, type);
                         }
                         pfpLastLogCount = data.log.length;
                     }
@@ -1190,7 +1167,7 @@
                 if (authResp.ok) {
                     const authData = await authResp.json();
                     if (authData.role !== 'admin') {
-                        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#f44336;font-size:1.5rem">Access Denied — Redirecting...</div>';
+                        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#ff1f1f;font-size:1.5rem">Access Denied — Redirecting...</div>';
                         setTimeout(() => window.location.href = '/', 3000);
                         return;
                     }
@@ -1231,7 +1208,7 @@
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js?v=1"></script>
-    <script src="/static/js/auth.js?v=1"></script>
-    <script src="/static/js/footer.js?v=1"></script>
+    <script src="/static/js/auth.js?v=3"></script>
+    <script src="/static/js/footer.js?v=2"></script>
 </body>
 </html>

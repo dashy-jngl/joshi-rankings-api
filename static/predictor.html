@@ -16,12 +16,10 @@
     <meta name="twitter:description" content="Predict joshi match outcomes using ELO ratings. Simulate singles and multi-wrestler matches.">
     <link rel="icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/css/shared.css?v=2">
+    <link rel="stylesheet" href="/static/css/shared.css?v=14">
     <style>
         .mode-tabs {
             display: flex;
-            background: var(--bg-card);
-            border-radius: 8px;
             padding: 4px;
             margin-bottom: 24px;
         }
@@ -32,7 +30,7 @@
             text-align: center;
             background: transparent;
             border: none;
-            border-radius: 6px;
+            border-radius: 0;
             color: var(--text-muted);
             cursor: pointer;
             transition: all 0.2s;
@@ -41,7 +39,7 @@
         
         .mode-tab.active {
             background: var(--accent);
-            color: white;
+            color: #000;
         }
         
         .mode-tab:hover:not(.active) {
@@ -58,9 +56,6 @@
         }
         
         .team-section {
-            background: var(--bg-card);
-            border-radius: 12px;
-            padding: 20px;
             margin-bottom: 20px;
         }
         
@@ -92,26 +87,16 @@
         .wrestler-input input {
             width: 100%;
             padding: 12px 16px;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-primary);
             font-size: 14px;
         }
-        
-        .wrestler-input input:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 2px var(--accent-glow);
-        }
-        
+
         .predict-button, .simulate-button {
             width: 100%;
             padding: 16px;
             background: var(--accent);
-            color: white;
+            color: #000;
             border: none;
-            border-radius: 8px;
+            border-radius: 0;
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
@@ -133,7 +118,7 @@
             border: 1px solid var(--border);
             color: var(--text-muted);
             padding: 6px 14px;
-            border-radius: 8px;
+            border-radius: 0;
             cursor: pointer;
             font-size: 0.85rem;
             margin-bottom: 12px;
@@ -164,8 +149,6 @@
         
         .probability-bar {
             flex: 1;
-            background: var(--bg-card);
-            border-radius: 8px;
             padding: 16px;
             text-align: center;
         }
@@ -190,8 +173,6 @@
         }
         
         .stat-group {
-            background: var(--bg-card);
-            border-radius: 8px;
             padding: 16px;
         }
         
@@ -232,9 +213,6 @@
         }
         
         .tournament-options {
-            background: var(--bg-card);
-            border-radius: 12px;
-            padding: 20px;
             margin-bottom: 20px;
         }
         
@@ -247,11 +225,6 @@
         .format-button {
             flex: 1;
             padding: 12px 16px;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-primary);
-            cursor: pointer;
             text-align: center;
             transition: all 0.2s;
         }
@@ -259,7 +232,7 @@
         .format-button.active {
             background: var(--accent);
             border-color: var(--accent);
-            color: white;
+            color: #000;
         }
         
         .format-options {
@@ -282,10 +255,6 @@
         
         .format-option select {
             padding: 8px 12px;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text-primary);
         }
         
         .tournament-wrestlers {
@@ -302,8 +271,6 @@
         }
         
         .bracket {
-            background: var(--bg-card);
-            border-radius: 12px;
             padding: 20px;
             overflow-x: auto;
         }
@@ -334,10 +301,7 @@
         }
         
         .bracket-match {
-            background: var(--bg-secondary);
-            border-radius: 8px;
             padding: 4px 12px;
-            border: 1px solid var(--border);
             margin: 8px 0;
             position: relative;
         }
@@ -369,13 +333,13 @@
             align-items: center;
             padding: 6px 8px;
             margin: 2px 0;
-            border-radius: 4px;
+            border-radius: 0;
             transition: background 0.15s;
         }
         
         .bracket-wrestler.winner {
             background: rgba(74, 222, 128, 0.15);
-            border: 1px solid #4ade80;
+            border: 1px solid #00ff00;
         }
         
         .bracket-wrestler.loser {
@@ -393,13 +357,10 @@
             font-weight: 600;
         }
         
-        .bracket-probability.favored { color: #4ade80; }
+        .bracket-probability.favored { color: #00ff00; }
         .bracket-probability.underdog { color: var(--red); }
         
         .round-robin-block {
-            background: var(--bg-card);
-            border-radius: 12px;
-            padding: 20px;
             margin-bottom: 20px;
         }
         
@@ -447,8 +408,6 @@
             justify-content: space-between;
             align-items: center;
             padding: 8px 12px;
-            background: var(--bg-secondary);
-            border-radius: 6px;
             margin-bottom: 8px;
         }
         
@@ -463,16 +422,16 @@
     </style>
 </head>
 <body>
-    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/nav.js?v=7"></script>
     <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
         <div class="page-header">
-            <h1>🔮 Match Predictor</h1>
+            <h1>Match Predictor</h1>
             <p>Predict match outcomes and simulate tournaments using ELO ratings and momentum</p>
         </div>
 
         <!-- Mode Tabs -->
-        <div class="mode-tabs">
+        <div class="card mode-tabs">
             <button class="mode-tab active" data-mode="singles">Singles</button>
             <button class="mode-tab" data-mode="team">Team</button>
             <button class="mode-tab" data-mode="multi">Multi</button>
@@ -481,7 +440,7 @@
 
         <!-- Singles Mode -->
         <div class="mode-content active" id="singles-mode">
-            <div class="team-section">
+            <div class="card team-section">
                 <div class="team-header">
                     <div class="team-title">Wrestler 1</div>
                 </div>
@@ -492,7 +451,7 @@
                 </div>
             </div>
 
-            <div class="team-section">
+            <div class="card team-section">
                 <div class="team-header">
                     <div class="team-title">Wrestler 2</div>
                 </div>
@@ -512,7 +471,7 @@
         <div class="mode-content" id="team-mode">
             <div style="margin-bottom: 16px;">
                 <label style="color: var(--text-muted); font-size: 0.85rem;">Team Size</label>
-                <select id="teamSize" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; margin-left: 8px;">
+                <select id="teamSize" style="margin-left: 8px;">
                     <option value="2" selected>2 per team</option>
                     <option value="3">3 per team</option>
                     <option value="4">4 per team</option>
@@ -533,7 +492,7 @@
         <div class="mode-content" id="multi-mode">
             <div style="margin-bottom: 16px;">
                 <label style="color: var(--text-muted); font-size: 0.85rem;">Participants</label>
-                <select id="multiSize" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; margin-left: 8px;">
+                <select id="multiSize" style="margin-left: 8px;">
                     <option value="3" selected>3-Way</option>
                     <option value="4">4-Way</option>
                     <option value="5">5-Way</option>
@@ -551,10 +510,10 @@
 
         <!-- Tournament Mode -->
         <div class="mode-content" id="tournament-mode">
-            <div class="tournament-options">
+            <div class="card tournament-options">
                 <div class="tournament-format">
-                    <button class="format-button active" data-format="single_elimination">Single Elimination</button>
-                    <button class="format-button" data-format="round_robin">Round Robin</button>
+                    <button class="btn btn-ghost format-button active" data-format="single_elimination">Single Elimination</button>
+                    <button class="btn btn-ghost format-button" data-format="round_robin">Round Robin</button>
                 </div>
 
                 <div class="format-options">
@@ -694,7 +653,8 @@
                 const numMatches = totalWrestlers / 2;
                 for (let m = 0; m < numMatches; m++) {
                     const matchDiv = document.createElement('div');
-                    matchDiv.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border);';
+                    matchDiv.className = 'card';
+                    matchDiv.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 10px;';
                     matchDiv.innerHTML = `
                         <span style="color: var(--text-muted); font-size: 0.8rem; min-width: 24px;">R1-${m + 1}</span>
                         <div class="wrestler-input" style="flex: 1;">
@@ -715,7 +675,8 @@
                 for (let i = 0; i < totalWrestlers; i++) {
                     if (blockCount > 1 && i % poolSize === 0) {
                         const blockHeader = document.createElement('div');
-                        blockHeader.style.cssText = 'width: 100%; padding: 8px 0 4px; color: var(--accent); font-weight: 600; font-size: 0.9rem; border-top: 1px solid var(--border); margin-top: 8px;';
+                        blockHeader.className = 'section-label';
+                        blockHeader.style.cssText = 'width: 100%; padding: 8px 0 4px; font-size: 0.9rem; border-top: 1px solid var(--border); margin: 8px 0 0;';
                         blockHeader.textContent = `Block ${blockNames[Math.floor(i / poolSize)] || Math.floor(i / poolSize) + 1}`;
                         container.appendChild(blockHeader);
                     }
@@ -756,7 +717,7 @@
 
         function formatMomentum(momentum) {
             const val = Math.abs(momentum).toFixed(1);
-            const color = momentum > 0 ? '#4ade80' : momentum < 0 ? 'var(--red)' : 'var(--text-muted)';
+            const color = momentum > 0 ? '#00ff00' : momentum < 0 ? 'var(--red)' : 'var(--text-muted)';
             const arrow = momentum > 0 ? '▲' : momentum < 0 ? '▼' : '-';
             return `<span style="color:${color};font-weight:600">${arrow} ${val}</span>`;
         }
@@ -840,13 +801,13 @@
             container.innerHTML = `
                 <button class="back-button" onclick="showInputsHideResults('${mode}-mode')">← Back to inputs</button>
                 <div class="team-stats">
-                    <div class="stat-group" style="border: 2px solid ${t1Favored ? '#4ade80' : 'var(--red)'}; border-radius: 12px;">
+                    <div class="card stat-group" style="border-color: ${t1Favored ? '#00ff00' : 'var(--red)'};">
                         <div class="stat-group-title" style="display: flex; justify-content: space-between; align-items: center;">
                             <span>Team 1</span>
-                            <span style="color: ${t1Favored ? '#4ade80' : 'var(--red)'}; font-size: 1.4rem; font-weight: 700;">${team1Prob}%</span>
+                            <span style="color: ${t1Favored ? '#00ff00' : 'var(--red)'}; font-size: 1.4rem; font-weight: 700;">${team1Prob}%</span>
                         </div>
                         ${result.team1_wrestlers.map(w => `
-                            <div style="margin-bottom: 8px; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
+                            <div class="card" style="margin-bottom: 8px; padding: 8px;">
                                 <div class="stat-item">
                                     <span class="stat-label">${w.name}</span>
                                     <span class="stat-value">${Math.round(w.elo)} ELO ${formatMomentum(w.momentum)}</span>
@@ -855,13 +816,13 @@
                         `).join('')}
                     </div>
                     
-                    <div class="stat-group" style="border: 2px solid ${!t1Favored ? '#4ade80' : 'var(--red)'}; border-radius: 12px;">
+                    <div class="card stat-group" style="border-color: ${!t1Favored ? '#00ff00' : 'var(--red)'};">
                         <div class="stat-group-title" style="display: flex; justify-content: space-between; align-items: center;">
                             <span>Team 2</span>
-                            <span style="color: ${!t1Favored ? '#4ade80' : 'var(--red)'}; font-size: 1.4rem; font-weight: 700;">${team2Prob}%</span>
+                            <span style="color: ${!t1Favored ? '#00ff00' : 'var(--red)'}; font-size: 1.4rem; font-weight: 700;">${team2Prob}%</span>
                         </div>
                         ${result.team2_wrestlers.map(w => `
-                            <div style="margin-bottom: 8px; padding: 8px; background: var(--bg-secondary); border-radius: 6px;">
+                            <div class="card" style="margin-bottom: 8px; padding: 8px;">
                                 <div class="stat-item">
                                     <span class="stat-label">${w.name}</span>
                                     <span class="stat-value">${Math.round(w.elo)} ELO ${formatMomentum(w.momentum)}</span>
@@ -931,15 +892,15 @@
             return `
                 <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center;">
                     <button class="back-button" onclick="showInputsHideResults('tournament-mode')">← Back to inputs</button>
-                    ${showReroll ? '<button class="simulate-button" onclick="simulateTournament()" style="margin: 0; padding: 8px 16px; font-size: 0.85rem;">🎲 Reroll</button>' : ''}
+                    ${showReroll ? '<button class="simulate-button" onclick="simulateTournament()" style="margin: 0; padding: 8px 16px; font-size: 0.85rem;"> Reroll</button>' : ''}
                 </div>
             `;
         }
 
         function displaySingleEliminationResults(bracket, container) {
             const winnerHtml = bracket.winner ? `
-                <div style="text-align: center; margin-bottom: 24px; padding: 20px; background: var(--accent-glow); border: 1px solid var(--accent); border-radius: 12px;">
-                    <h2 style="color: var(--accent); margin: 0;">🏆 Tournament Winner</h2>
+                <div style="text-align: center; margin-bottom: 24px; padding: 20px; background: var(--accent-glow); border: 1px solid var(--accent); border-radius: 0;">
+                    <h2 class="section-label" style="margin: 0;">Tournament Winner</h2>
                     <h3 style="margin: 8px 0 0 0;">${bracket.winner.name}</h3>
                 </div>
             ` : '';
@@ -957,7 +918,7 @@
                                 const p1 = (match.probability1 * 100).toFixed(0);
                                 const p2 = (match.probability2 * 100).toFixed(0);
                                 return `
-                                    <div class="bracket-match">
+                                    <div class="card bracket-match">
                                         <div class="bracket-wrestler ${w1wins ? 'winner' : w2wins ? 'loser' : ''}">
                                             <span class="bracket-wrestler-name">${match.wrestler1.name}</span>
                                             <span class="bracket-probability ${match.probability1 >= match.probability2 ? 'favored' : 'underdog'}">${p1}%</span>
@@ -978,7 +939,7 @@
 
         function displayRoundRobinResults(results, container) {
             container.innerHTML = tournamentBackButtons(false) + results.blocks.map(block => `
-                <div class="round-robin-block">
+                <div class="card round-robin-block">
                     <div class="block-title">Block ${block.block_name}</div>
                     
                     <table class="standings-table">
@@ -1005,7 +966,7 @@
                     <div class="matches-section">
                         <h4 style="color: var(--text-primary); margin-bottom: 12px;">Matches</h4>
                         ${block.matches.map(match => `
-                            <div class="match-result">
+                            <div class="card match-result">
                                 <div class="match-wrestlers">
                                     ${match.wrestler1.name} vs ${match.wrestler2.name}
                                 </div>
@@ -1054,7 +1015,7 @@
             
             for (let t = 1; t <= 2; t++) {
                 const section = document.createElement('div');
-                section.className = 'team-section';
+                section.className = 'card team-section';
                 section.innerHTML = `<div class="team-header"><div class="team-title">Team ${t}</div></div><div class="wrestler-input-group"></div>`;
                 const group = section.querySelector('.wrestler-input-group');
                 for (let i = 0; i < size; i++) {
@@ -1077,7 +1038,7 @@
             
             for (let i = 0; i < size; i++) {
                 const section = document.createElement('div');
-                section.className = 'team-section';
+                section.className = 'card team-section';
                 section.innerHTML = `<div class="team-header"><div class="team-title">Wrestler ${i+1}</div></div><div class="wrestler-input-group"><div class="wrestler-input"><input type="text" placeholder="Search for a wrestler..." data-team="multi" data-slot="${i}"></div></div>`;
                 container.appendChild(section);
             }
@@ -1130,13 +1091,13 @@
                         const barWidth = (w.probability / maxProb * 100).toFixed(0);
                         const isTop = i === 0;
                         return `
-                            <div style="background: var(--bg-secondary); border-radius: 8px; padding: 12px; border: 2px solid ${isTop ? '#4ade80' : 'var(--border)'};">
+                            <div class="card" style="padding: 12px; border-color: ${isTop ? '#00ff00' : 'var(--border)'};">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                    <span style="font-weight: 600; color: var(--text-primary);">${isTop ? '👑 ' : ''}${w.name}</span>
-                                    <span style="color: ${isTop ? '#4ade80' : 'var(--red)'}; font-weight: 700; font-size: 1.1rem;">${prob}%</span>
+                                    <span style="font-weight: 600; color: var(--text-primary);">${isTop ? ' ' : ''}${w.name}</span>
+                                    <span style="color: ${isTop ? '#00ff00' : 'var(--red)'}; font-weight: 700; font-size: 1.1rem;">${prob}%</span>
                                 </div>
-                                <div style="background: var(--bg-primary); border-radius: 4px; height: 6px; overflow: hidden;">
-                                    <div style="background: ${isTop ? '#4ade80' : 'var(--accent)'}; height: 100%; width: ${barWidth}%; border-radius: 4px;"></div>
+                                <div style="background: var(--bg-primary); border-radius: 0; height: 6px; overflow: hidden;">
+                                    <div style="background: ${isTop ? '#00ff00' : 'var(--accent)'}; height: 100%; width: ${barWidth}%; border-radius: 0;"></div>
                                 </div>
                                 <div style="display: flex; gap: 12px; margin-top: 6px; font-size: 0.8rem; color: var(--text-muted);">
                                     <span>ELO: ${Math.round(w.elo)}</span>
@@ -1165,7 +1126,7 @@
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js?v=1"></script>
-    <script src="/static/js/auth.js?v=1"></script>
-    <script src="/static/js/footer.js?v=1"></script>
+    <script src="/static/js/auth.js?v=3"></script>
+    <script src="/static/js/footer.js?v=2"></script>
 </body>
 </html>

@@ -16,10 +16,10 @@
     <meta name="twitter:description" content="Latest updates and news from Joshitori — ELO power rankings for women's pro wrestling.">
     <link rel="icon" href="/static/favicon.ico">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/css/shared.css?v=2">
+    <link rel="stylesheet" href="/static/css/shared.css?v=14">
 </head>
 <body>
-    <script src="/static/js/nav.js?v=3"></script>
+    <script src="/static/js/nav.js?v=7"></script>
     <script src="/static/js/wrestler-search.js?v=1"></script>
 <div class="container">
         <div class="page-header">
@@ -32,15 +32,15 @@
             <!-- Top Gainers: Week / Month / Year -->
             <div class="featured-trio">
                 <div class="featured-card" id="cardWeek">
-                    <div class="featured-period">🏅 Last 7 Days</div>
+                    <div class="featured-period"> Last 7 Days</div>
                     <div class="featured-body featured-list"></div>
                 </div>
                 <div class="featured-card" id="cardMonth">
-                    <div class="featured-period">🏅 Last 30 Days</div>
+                    <div class="featured-period"> Last 30 Days</div>
                     <div class="featured-body featured-list"></div>
                 </div>
                 <div class="featured-card" id="cardYear">
-                    <div class="featured-period">🏅 Last 365 Days</div>
+                    <div class="featured-period"> Last 365 Days</div>
                     <div class="featured-body featured-list"></div>
                 </div>
             </div>
@@ -48,26 +48,26 @@
             <!-- Two Column Grid -->
             <div class="featured-grid">
                 <div class="featured-panel">
-                    <h3>🏆 Recent Title Changes</h3>
+                    <h3>Recent Title Changes</h3>
                     <div id="titleChanges" class="featured-list"></div>
                 </div>
                 <div class="featured-panel">
-                    <h3>💥 Biggest Upsets</h3>
+                    <h3>Biggest Upsets</h3>
                     <div id="biggestUpsets" class="featured-list"></div>
                 </div>
                 <div class="featured-panel">
-                    <h3>🔥 Hot Streaks</h3>
+                    <h3>Hot Streaks</h3>
                     <div id="hotStreaks" class="featured-list"></div>
                 </div>
                 <div class="featured-panel">
-                    <h3>📈 Rising Stars <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400">(last 30 days · wrestlers below avg ELO with biggest gains)</span></h3>
+                    <h3>Rising Stars <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400">(last 30 days · wrestlers below avg ELO with biggest gains)</span></h3>
                     <div id="risingStars" class="featured-list"></div>
                 </div>
             </div>
 
             <!-- Recent Matches -->
             <div class="featured-panel featured-full">
-                <h3>⚡ Recent Matches</h3>
+                <h3>Recent Matches</h3>
                 <div id="recentMatches" class="featured-list"></div>
             </div>
         </div>
@@ -186,12 +186,12 @@
         }
 
         function getTier(rank, total) {
-            if (total === 0) return { tier: 'Seadling', tierIcon: '🌱' };
+            if (total === 0) return { tier: 'Seadling', tierIcon: '' };
             const pct = (rank / total) * 100;
             for (const t of tierDefs) {
                 if (pct <= t.max_pct) return { tier: t.name, tierIcon: t.icon };
             }
-            return { tier: 'Seadling', tierIcon: '🌱' };
+            return { tier: 'Seadling', tierIcon: '' };
         }
 
         // --- Tier CSS class ---
@@ -448,7 +448,7 @@
                         const titleLink = t.cagematch_title_id
                             ? `<a href="/title/${t.cagematch_title_id}" class="fi-title">${t.title_name}</a>`
                             : `<span class="fi-title">${t.title_name}</span>`;
-                        const evtLink = t.cagematch_event_id ? `<a href="/event/${t.cagematch_event_id}" style="font-size:0.7rem;margin-left:4px;opacity:0.6" title="View event">🔗</a>` : '';
+                        const evtLink = t.cagematch_event_id ? `<a href="/event/${t.cagematch_event_id}" style="font-size:0.7rem;margin-left:4px;opacity:0.6" title="View event">↗</a>` : '';
                         return `<div class="featured-item">
                             ${titleLink}
                             <span class="fi-arrow">→</span>
@@ -471,7 +471,7 @@
                             <a href="/wrestler/${u.loser_id}">${u.loser_name}</a>
                             <span class="fi-gap">↑ ${Math.round(u.elo_gap)} ELO gap</span>
                             <span style="color:var(--text-muted);font-size:0.75rem;margin-left:4px">${u.date?.slice(0,10) || ''}</span>
-                            ${u.cagematch_event_id ? `<a href="/event/${u.cagematch_event_id}" style="font-size:0.7rem;margin-left:4px;opacity:0.6">🔗</a>` : ''}
+                            ${u.cagematch_event_id ? `<a href="/event/${u.cagematch_event_id}" style="font-size:0.7rem;margin-left:4px;opacity:0.6">↗</a>` : ''}
                         </div>
                     `).join('');
                 } else {
@@ -484,7 +484,7 @@
                     hs.innerHTML = data.hot_streaks.map(s => `
                         <div class="featured-item">
                             <a href="/wrestler/${s.wrestler_id}">${s.name}</a>
-                            <span class="fi-streak fi-hot">🔥 ${s.streak}W</span>
+                            <span class="fi-streak fi-hot"> ${s.streak}W</span>
                             <span class="fi-elo">${Math.round(s.elo)}</span>
                         </div>
                     `).join('');
@@ -550,7 +550,7 @@
             body.innerHTML = wrestlers.map((w, i) => {
                 const gainClass = w.elo_gain >= 0 ? 'positive' : 'negative';
                 const gainSign = w.elo_gain >= 0 ? '+' : '';
-                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `<span style="opacity:0.5">${i+1}.</span>`;
+                const medal = `<span class="rank-${i+1}" style="opacity:${i < 3 ? 1 : 0.5}">${i+1}.</span>`;
                 return `<div class="featured-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
                     <span style="min-width:24px;text-align:center">${medal}</span>
                     <a href="/wrestler/${w.wrestler_id}" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${w.name}</a>
@@ -566,7 +566,7 @@
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>
     <script src="/static/js/nav-burger.js?v=1"></script>
-    <script src="/static/js/auth.js?v=1"></script>
-    <script src="/static/js/footer.js?v=1"></script>
+    <script src="/static/js/auth.js?v=3"></script>
+    <script src="/static/js/footer.js?v=2"></script>
 </body>
 </html>

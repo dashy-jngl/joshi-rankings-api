@@ -31,3 +31,6 @@ coverage.out
 
 # Logs
 *.log
+
+# Wallpaper pool — symlink into the wwr2 (joshi.fyi) asset library on the shared box
+static/backgrounds

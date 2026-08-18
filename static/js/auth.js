@@ -45,18 +45,18 @@
             <div class="auth-dialog">
                 <button class="auth-close">&times;</button>
                 <div id="auth-login-form">
-                    <h2>🏆 Login</h2>
+                    <h2 class="section-label">Login</h2>
                     <input type="text" id="auth-username" placeholder="Username" autocomplete="username">
                     <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password">
-                    <button id="auth-submit" class="auth-btn">Login</button>
+                    <button id="auth-submit" class="auth-btn btn btn-accent">Login</button>
                     <div id="auth-error" class="auth-error"></div>
                 </div>
                 <div id="auth-setup-form" style="display:none">
-                    <h2>🏆 Initial Setup</h2>
+                    <h2 class="section-label">Initial Setup</h2>
                     <p class="auth-hint">No admin account exists. Create one to get started.</p>
                     <input type="text" id="setup-username" placeholder="Username" autocomplete="username">
                     <input type="password" id="setup-password" placeholder="Password" autocomplete="new-password">
-                    <button id="setup-submit" class="auth-btn">Create Admin</button>
+                    <button id="setup-submit" class="auth-btn btn btn-accent">Create Admin</button>
                     <div id="setup-error" class="auth-error"></div>
                 </div>
             </div>
@@ -64,23 +64,21 @@
         document.body.appendChild(modal);
 
         // Styles
+        // Layout-only styles — the skin (dialog box, inputs, buttons, labels)
+        // comes from shared.css primitives (.card via tokens, global form skin,
+        // .btn-accent, .section-label). .auth-user-indicator lives there too.
         const style = document.createElement('style');
         style.textContent = `
             #joshi-auth-modal { position:fixed; inset:0; z-index:10000; display:flex; align-items:center; justify-content:center; }
             #joshi-auth-modal .auth-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.7); }
-            #joshi-auth-modal .auth-dialog { position:relative; background:#1a1a2e; border:1px solid #e91e63; border-radius:12px; padding:32px; width:340px; max-width:90vw; }
-            #joshi-auth-modal .auth-close { position:absolute; top:10px; right:14px; background:none; border:none; color:#888; font-size:1.4rem; cursor:pointer; }
-            #joshi-auth-modal .auth-close:hover { color:#fff; }
-            #joshi-auth-modal h2 { color:#e91e63; margin-bottom:20px; font-size:1.2rem; text-align:center; }
-            #joshi-auth-modal input { display:block; width:100%; padding:10px 12px; margin-bottom:12px; background:#111; border:1px solid #333; border-radius:6px; color:#fff; font-size:0.95rem; }
-            #joshi-auth-modal input:focus { outline:none; border-color:#e91e63; }
-            #joshi-auth-modal .auth-btn { display:block; width:100%; padding:10px; background:#e91e63; color:#fff; border:none; border-radius:6px; font-size:0.95rem; font-weight:600; cursor:pointer; }
-            #joshi-auth-modal .auth-btn:hover { background:#c2185b; }
-            #joshi-auth-modal .auth-error { color:#f44336; font-size:0.85rem; margin-top:10px; text-align:center; min-height:1.2em; }
-            #joshi-auth-modal .auth-hint { color:#888; font-size:0.85rem; margin-bottom:16px; text-align:center; }
-            .auth-user-indicator { display:flex; align-items:center; gap:8px; font-size:0.85rem; color:#ccc; margin-left:12px; }
-            .auth-user-indicator a { color:#e91e63; text-decoration:none; font-size:0.8rem; }
-            .auth-user-indicator a:hover { text-decoration:underline; }
+            #joshi-auth-modal .auth-dialog { position:relative; background:var(--card); border:2px solid var(--panel-edge); padding:32px; width:340px; max-width:90vw; }
+            #joshi-auth-modal .auth-close { position:absolute; top:10px; right:14px; background:none; border:none; color:var(--muted); font-size:1.4rem; cursor:pointer; }
+            #joshi-auth-modal .auth-close:hover { color:var(--gold); }
+            #joshi-auth-modal h2 { text-align:center; margin-bottom:20px; }
+            #joshi-auth-modal input { display:block; width:100%; padding:10px 12px; margin-bottom:12px; font-size:0.95rem; }
+            #joshi-auth-modal .auth-btn { display:block; width:100%; padding:10px; font-size:0.85rem; }
+            #joshi-auth-modal .auth-error { color:var(--red); font-size:0.85rem; margin-top:10px; text-align:center; min-height:1.2em; }
+            #joshi-auth-modal .auth-hint { color:var(--muted); font-size:0.85rem; margin-bottom:16px; text-align:center; }
         `;
         document.head.appendChild(style);
 

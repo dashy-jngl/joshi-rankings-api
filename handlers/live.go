@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -12,14 +13,32 @@ import (
 )
 
 // live.go — the "living data" layer over the all-time tables:
-// 12-month performance ratings (chess-style tournament performance), 7-day
+// windowed performance ratings (chess-style tournament performance), 7-day
 // rank movement for both orderings, and the on-this-day archive rotation.
 
 const (
-	perfWindowMonths = 12
-	perfMinMatches   = 10
-	moveLookbackDays = 7
+	defaultWindowDays = 7
+	moveLookbackDays  = 7
 )
+
+// formWindows maps an allowed form window (in days) to the minimum number of
+// matches a wrestler needs inside it to be rated. Short windows can't demand
+// a big sample — a week is one or two shows — so the bar scales down with the
+// window; the career anchor in the blend below is what keeps small samples
+// from producing nonsense.
+var formWindows = map[int]int{
+	1:    1,  // day
+	7:    1,  // week
+	30:   3,  // month
+	90:   5,  // 3 months
+	182:  10, // 6 months
+	365:  10, // 12 months
+	730:  10, // 2 years
+	1825: 10, // 5 years
+}
+
+// monthsToDays translates the old ?months= windows onto the day-based ones.
+var monthsToDays = map[int]int{6: 182, 12: 365, 24: 730, 60: 1825}
 
 type perfRow struct {
 	Wid    uint
@@ -35,7 +54,7 @@ type perfRow struct {
 // bonus, the way chess rates tournament performance. Unlike a windowed ELO
 // delta this measures the *quality of recent results*, so an established
 // wrestler holding her level scores high without needing to climb.
-func perfRatings(db *gorm.DB, from, to string) (map[uint]perfRow, error) {
+func perfRatings(db *gorm.DB, from, to string, minMatches int) (map[uint]perfRow, error) {
 	var rows []perfRow
 	err := db.Raw(`
 		WITH recent AS (
@@ -61,7 +80,7 @@ func perfRatings(db *gorm.DB, from, to string) (map[uint]perfRow, error) {
 		JOIN opp o ON o.wid = r.wid AND o.match_id = r.match_id
 		GROUP BY r.wid
 		HAVING COUNT(*) >= ?
-	`, from, to, perfMinMatches).Scan(&rows).Error
+	`, from, to, minMatches).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -139,18 +158,22 @@ func GetRankingsExtras(db *gorm.DB) gin.HandlerFunc {
 	const ttl = 30 * time.Minute
 
 	return func(c *gin.Context) {
-		months := 12
-		switch c.Query("months") {
-		case "6":
-			months = 6
-		case "24":
-			months = 24
-		case "60":
-			months = 60
+		// ?days= is the current form; ?months= is kept for links minted
+		// before the short windows existed.
+		days := defaultWindowDays
+		if d, err := strconv.Atoi(c.Query("days")); err == nil {
+			if _, ok := formWindows[d]; ok {
+				days = d
+			}
+		} else if m, err := strconv.Atoi(c.Query("months")); err == nil {
+			if d := monthsToDays[m]; d != 0 {
+				days = d
+			}
 		}
+		minMatches := formWindows[days]
 
 		mu.Lock()
-		if e, ok := caches[months]; ok && time.Since(e.at) < ttl {
+		if e, ok := caches[days]; ok && time.Since(e.at) < ttl {
 			data := e.data
 			mu.Unlock()
 			c.Header("Cache-Control", "public, max-age=600")
@@ -180,12 +203,12 @@ func GetRankingsExtras(db *gorm.DB) gin.HandlerFunc {
 		curRanks := rankOf(curVals)
 
 		// Form ratings: current window and the window as it stood a week ago.
-		perfNow, err := perfRatings(db, day(now.AddDate(0, -months, 0)), day(now.AddDate(0, 0, 1)))
+		perfNow, err := perfRatings(db, day(now.AddDate(0, 0, -days)), day(now.AddDate(0, 0, 1)), minMatches)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "perf query failed"})
 			return
 		}
-		perfPast, err := perfRatings(db, day(weekAgo.AddDate(0, -months, 0)), day(weekAgo))
+		perfPast, err := perfRatings(db, day(weekAgo.AddDate(0, 0, -days)), day(weekAgo), minMatches)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "perf query failed"})
 			return
@@ -247,8 +270,8 @@ func GetRankingsExtras(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		resp := gin.H{
-			"window_months": months,
-			"min_matches":   perfMinMatches,
+			"window_days":   days,
+			"min_matches":   minMatches,
 			"lookback_days": moveLookbackDays,
 			"extras":        extras,
 		}
@@ -256,7 +279,7 @@ func GetRankingsExtras(db *gorm.DB) gin.HandlerFunc {
 
 		if data, err := json.Marshal(resp); err == nil {
 			mu.Lock()
-			caches[months] = &cacheEntry{data: data, at: time.Now()}
+			caches[days] = &cacheEntry{data: data, at: time.Now()}
 			mu.Unlock()
 		}
 	}

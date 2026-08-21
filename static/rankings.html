@@ -50,13 +50,17 @@
 
         <!-- Filters: period on the first row, everything else on the second -->
         <div class="filters-bar" style="align-items:center">
-            <div class="seg" id="periodSeg" title="Form = performance rating over the window — how strong each wrestler is right now, anchored to career level">
-                <button data-months="6" onclick="setPeriod(6)">6 mo</button>
-                <button data-months="12" class="active" onclick="setPeriod(12)">12 mo</button>
-                <button data-months="24" onclick="setPeriod(24)">2 y</button>
-                <button data-months="60" onclick="setPeriod(60)">5 y</button>
-                <button data-months="0" onclick="setPeriod(0)">All-time</button>
-                <button data-months="-1" onclick="setPeriod(-1)" title="Each wrestler's career-peak ELO and the year it was set">Peak</button>
+            <div class="seg" id="periodSeg" style="flex-wrap:wrap" title="Form = performance rating over the window — how strong each wrestler is right now, anchored to career level">
+                <button data-days="1" onclick="setPeriod(1)">Day</button>
+                <button data-days="7" class="active" onclick="setPeriod(7)">Week</button>
+                <button data-days="30" onclick="setPeriod(30)">Month</button>
+                <button data-days="90" onclick="setPeriod(90)">3 mo</button>
+                <button data-days="182" onclick="setPeriod(182)">6 mo</button>
+                <button data-days="365" onclick="setPeriod(365)">12 mo</button>
+                <button data-days="730" onclick="setPeriod(730)">2 y</button>
+                <button data-days="1825" onclick="setPeriod(1825)">5 y</button>
+                <button data-days="0" onclick="setPeriod(0)">All-time</button>
+                <button data-days="-1" onclick="setPeriod(-1)" title="Each wrestler's career-peak ELO and the year it was set">Peak</button>
             </div>
             <input type="text" id="searchBox" placeholder="Search wrestlers or promotion..." oninput="applyFilters()">
         </div>
@@ -121,8 +125,10 @@
     <script>
         let allRankings = [];
         let allWrestlers = [];
-        let rankMonths = 12;        // form window in months; 0 = all-time ELO; -1 = career peak
-        let extrasByWindow = {};    // months -> extras map from /api/rankings-extras
+        let rankDays = 7;           // form window in days; 0 = all-time ELO; -1 = career peak
+        const WINDOW_LABEL = { 1: 'day', 7: 'week', 30: 'month', 90: '3 months',
+                               182: '6 months', 365: '12 months', 730: '2 years', 1825: '5 years' };
+        let extrasByWindow = {};    // days -> extras map from /api/rankings-extras
         let rankExtras = {};        // active window's extras
         let atMoves = {};           // wrestler id -> all-time rank movement (window-independent)
         let peakElos = null;        // wrestler id -> {peak, date}, lazy-loaded for Peak mode
@@ -214,12 +220,12 @@
                 const [wrestlers, matchData, extrasResp] = await Promise.all([
                     fetch('/api/wrestlers').then(r => r.json()),
                     fetch('/api/matches/count').then(r => r.json()),
-                    fetch('/api/rankings-extras').then(r => r.json()).catch(() => ({ extras: {} })),
+                    fetch(`/api/rankings-extras?days=${rankDays}`).then(r => r.json()).catch(() => ({ extras: {} })),
                 ]);
 
                 allWrestlers = wrestlers;
                 rankExtras = extrasResp.extras || {};
-                extrasByWindow[12] = rankExtras;
+                extrasByWindow[rankDays] = rankExtras;
                 Object.entries(rankExtras).forEach(([id, e]) => { atMoves[id] = e.move; });
 
                 // Canonical country + broad region per wrestler (js/regions.js)
@@ -278,14 +284,14 @@
             }
         }
 
-        // --- Period: form window (6/12/24/60 months) vs all-time ---
+        // --- Period: form window (day → 5 years) vs all-time ---
         // Form ranks by anchored performance rating (quality of results in
         // the window, blended with career ELO) and shows the window record;
         // all-time is the classic ELO table. Movement is always vs 7 days
         // ago within the active ordering.
         function rebuildRankings() {
             let list;
-            if (rankMonths > 0) {
+            if (rankDays > 0) {
                 list = allWrestlers
                     .filter(w => rankExtras[w.id] && rankExtras[w.id].perf != null)
                     .map(w => {
@@ -294,7 +300,7 @@
                                  match_count: e.n || 0, move: e.perf_move };
                     })
                     .sort((a, b) => b.elo - a.elo);
-            } else if (rankMonths === -1) {
+            } else if (rankDays === -1) {
                 // Career peaks don't shuffle week to week — no movement column.
                 list = allWrestlers
                     .map(w => {
@@ -314,13 +320,13 @@
             });
         }
 
-        async function setPeriod(months) {
-            if (months === rankMonths) return;
-            rankMonths = months;
+        async function setPeriod(days) {
+            if (days === rankDays) return;
+            rankDays = days;
             document.querySelectorAll('#periodSeg button').forEach(b =>
-                b.classList.toggle('active', parseInt(b.dataset.months) === months));
-            const isForm = months > 0;
-            const isPeak = months === -1;
+                b.classList.toggle('active', parseInt(b.dataset.days) === days));
+            const isForm = days > 0;
+            const isPeak = days === -1;
             document.getElementById('ratingHead').innerHTML =
                 (isForm ? 'Form' : isPeak ? 'Peak' : 'ELO') + ' <span id="sort-elo" class="sort-arrow"></span>';
             document.getElementById('statTopLabel').textContent =
@@ -329,16 +335,16 @@
             // match-count filter; reset it so the form list isn't gutted.
             document.getElementById('minMatchesFilter').value = isForm ? '0' : '50';
 
-            if (isForm && !extrasByWindow[months]) {
+            if (isForm && !extrasByWindow[days]) {
                 document.getElementById('rankingsBody').innerHTML =
                     '<tr><td colspan="10"><div class="loading">Crunching form ratings...</div></td></tr>';
                 try {
-                    const resp = await fetch(`/api/rankings-extras?months=${months}`).then(r => r.json());
-                    extrasByWindow[months] = resp.extras || {};
+                    const resp = await fetch(`/api/rankings-extras?days=${days}`).then(r => r.json());
+                    extrasByWindow[days] = resp.extras || {};
                 } catch (e) {
-                    extrasByWindow[months] = {};
+                    extrasByWindow[days] = {};
                 }
-                if (rankMonths !== months) return; // user clicked away while loading
+                if (rankDays !== days) return; // user clicked away while loading
             }
             if (isPeak && !peakElos) {
                 document.getElementById('rankingsBody').innerHTML =
@@ -349,9 +355,9 @@
                 } catch (e) {
                     peakElos = {};
                 }
-                if (rankMonths !== months) return;
+                if (rankDays !== days) return;
             }
-            if (isForm) rankExtras = extrasByWindow[months];
+            if (isForm) rankExtras = extrasByWindow[days];
             rebuildRankings();
             applyFilters();
         }
@@ -418,7 +424,12 @@
             const body = document.getElementById('rankingsBody');
 
             if (rankings.length === 0) {
-                body.innerHTML = '<tr><td colspan="10"><div class="empty">No wrestlers match your filters</div></td></tr>';
+                // A short window can be genuinely empty (nobody has wrestled
+                // enough yet) — don't blame the filters for that.
+                const msg = (rankDays > 0 && allRankings.length === 0)
+                    ? `No rated matches in the last ${WINDOW_LABEL[rankDays]}`
+                    : 'No wrestlers match your filters';
+                body.innerHTML = `<tr><td colspan="10"><div class="empty">${msg}</div></td></tr>`;
                 return;
             }
 
@@ -528,13 +539,18 @@
             `;
         }
 
-        // --- Init --- (?period=6|12|24|60|alltime|peak deep-links a view)
+        // --- Init ---
+        // ?period=day|week|month|3mo|6mo|12mo|2y|5y|alltime|peak deep-links a
+        // view; the bare numbers 6/12/24/60 are the old month-based links.
+        const PERIOD_ALIASES = {
+            day: 1, week: 7, month: 30, '3mo': 90, '6mo': 182,
+            '12mo': 365, '2y': 730, '5y': 1825, alltime: 0, peak: -1,
+            0: 0, 6: 182, 12: 365, 24: 730, 60: 1825,
+        };
         loadData().then(() => {
             const p = new URLSearchParams(location.search).get('period');
-            if (p != null) {
-                const m = p === 'peak' ? -1 : p === 'alltime' ? 0 : parseInt(p);
-                if (!isNaN(m) && [6, 12, 24, 60, 0, -1].includes(m)) setPeriod(m);
-            }
+            const d = PERIOD_ALIASES[(p || '').toLowerCase()];
+            if (d !== undefined) setPeriod(d);
         });
     </script>
     <script src="/static/js/nav-search.js?v=3"></script>

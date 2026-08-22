@@ -36,15 +36,65 @@ var (
 	cronMu            sync.Mutex
 
 	// Scheduled job tracking
-	lastMatchScrapeTime    time.Time
-	lastMatchScrapeMatches int
-	lastProfileRefreshTime time.Time
+	lastMatchScrapeTime     time.Time
+	lastMatchScrapeMatches  int
+	lastProfileRefreshTime  time.Time
 	lastProfileRefreshCount int
-	matchScrapeRunning     bool
-	profileRefreshRunning  bool
-	nextMatchScrape        time.Time
-	nextProfileRefresh     time.Time
+	matchScrapeRunning      bool
+	profileRefreshRunning   bool
+	nextMatchScrape         time.Time
+	nextProfileRefresh      time.Time
+
+	// Attempt times (success or failure) — a failed run must not retry on
+	// every heartbeat, so these gate the retry independently of the
+	// success timestamps above.
+	lastMatchScrapeAttempt    time.Time
+	lastProfileRefreshAttempt time.Time
 )
+
+// Cron schedule. Runs are due-checked against timestamps persisted in the DB,
+// so the schedule survives restarts instead of resetting on every deploy.
+const (
+	matchScrapeInterval    = 24 * time.Hour
+	profileRefreshInterval = 7 * 24 * time.Hour
+	cronHeartbeat          = 5 * time.Minute
+	cronBootGrace          = 2 * time.Minute
+	cronRetryInterval      = time.Hour
+
+	settingCronEnabled     = "cron_enabled"
+	settingLastMatchScrape = "last_match_scrape_at"
+	settingLastProfileRun  = "last_profile_refresh_at"
+)
+
+// page serves an HTML page with revalidate-always caching. Without an explicit
+// Cache-Control these responses carry only Last-Modified, which lets browsers
+// cache them heuristically — so a deploy could leave someone on the old markup
+// (calling a new API in an old way) for hours. "no-cache" still allows cheap
+// 304s; it just forbids using the copy without checking first. Versioned
+// assets under /static keep their long TTLs.
+func page(path string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Cache-Control", "no-cache")
+		c.File(path)
+	}
+}
+
+// getSetting reads a persisted setting, returning def when absent.
+func getSetting(db *gorm.DB, key, def string) string {
+	var s models.Setting
+	if err := db.Where("key = ?", key).First(&s).Error; err != nil {
+		return def
+	}
+	return s.Value
+}
+
+// setSetting upserts a persisted setting.
+func setSetting(db *gorm.DB, key, value string) {
+	s := models.Setting{Key: key, Value: value}
+	if err := db.Where("key = ?", key).Assign(s).FirstOrCreate(&s).Error; err != nil {
+		log.Printf("⚠️  Failed to persist setting %s: %v", key, err)
+	}
+}
 
 // Test scrape state
 var (
@@ -83,7 +133,6 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	// Scraper setup — NOT started automatically
 	cm := scraper.NewCagematchScraper(db)
 	proc := scraper.NewProcessor(db, cm)
 
@@ -94,6 +143,32 @@ func main() {
 			cm.SetDelay(time.Duration(secs) * time.Second)
 			log.Printf("🕷️ Loaded scrape delay from DB: %ds", secs)
 		}
+	}
+
+	// Restore the cron's last-run times so the schedule picks up where it left
+	// off rather than restarting the clock on every deploy.
+	if t, err := time.Parse(time.RFC3339, getSetting(db, settingLastMatchScrape, "")); err == nil {
+		lastMatchScrapeTime = t
+	}
+	if t, err := time.Parse(time.RFC3339, getSetting(db, settingLastProfileRun, "")); err == nil {
+		lastProfileRefreshTime = t
+	} else {
+		// No record of a profile refresh: treat now as the baseline rather than
+		// "infinitely overdue". Match data is worth catching up on the moment
+		// we boot; a full-roster profile crawl is slow, changes little, and can
+		// wait for its normal weekly slot.
+		lastProfileRefreshTime = time.Now()
+		setSetting(db, settingLastProfileRun, lastProfileRefreshTime.Format(time.RFC3339))
+	}
+
+	// The cron is on unless it was explicitly turned off. It used to be
+	// off-by-default and off-after-every-restart, which meant a deploy
+	// silently stopped the scraper and nobody noticed until the data went
+	// stale. Turning it off from /admin persists and survives restarts.
+	if getSetting(db, settingCronEnabled, "true") != "false" {
+		startCron(db, cm, proc)
+	} else {
+		log.Println("🕷️ Cron is disabled (cron_enabled=false) — start it from /admin")
 	}
 
 	// Load SEO templates for server-side meta injection
@@ -112,43 +187,21 @@ func main() {
 
 	// Serve dashboard at root
 	r.Static("/static", "./static")
-	r.GET("/", func(c *gin.Context) {
-		c.File("./static/index.html")
-	})
-	r.GET("/rankings", func(c *gin.Context) {
-		c.File("./static/rankings.html")
-	})
-	r.GET("/admin", middleware.SessionAuth(), middleware.RequireRole("admin"), func(c *gin.Context) {
-		c.File("./static/admin.html")
-	})
+	r.GET("/", page("./static/index.html"))
+	r.GET("/rankings", page("./static/rankings.html"))
+	r.GET("/admin", middleware.SessionAuth(), middleware.RequireRole("admin"), page("./static/admin.html"))
 	r.GET("/wrestler/:id", handlers.ServeWrestlerPage(db))
-	r.GET("/compare", func(c *gin.Context) {
-		c.File("./static/compare.html")
-	})
-	r.GET("/network", func(c *gin.Context) {
-		c.File("./static/network.html")
-	})
-	r.GET("/stats", func(c *gin.Context) {
-		c.File("./static/stats.html")
-	})
-	r.GET("/timeline", func(c *gin.Context) {
-		c.File("./static/timeline.html")
-	})
-	r.GET("/predictor", func(c *gin.Context) {
-		c.File("./static/predictor.html")
-	})
-	r.GET("/titles", func(c *gin.Context) {
-		c.File("./static/titles.html")
-	})
+	r.GET("/compare", page("./static/compare.html"))
+	r.GET("/network", page("./static/network.html"))
+	r.GET("/stats", page("./static/stats.html"))
+	r.GET("/timeline", page("./static/timeline.html"))
+	r.GET("/predictor", page("./static/predictor.html"))
+	r.GET("/titles", page("./static/titles.html"))
 	r.GET("/title/:id", handlers.ServeTitlePage(db))
-	r.GET("/promotions", func(c *gin.Context) {
-		c.File("./static/promotions.html")
-	})
+	r.GET("/promotions", page("./static/promotions.html"))
 	r.GET("/promotion/:id", handlers.ServePromotionPage(db))
 	r.GET("/event/:id", handlers.ServeEventPage(db))
-	r.GET("/contact", func(c *gin.Context) {
-		c.File("./static/contact.html")
-	})
+	r.GET("/contact", page("./static/contact.html"))
 
 	// SEO
 	r.GET("/robots.txt", func(c *gin.Context) {
@@ -253,11 +306,11 @@ func main() {
 			protected.POST("/scraper/validate", handleValidate(cm, proc))
 			protected.POST("/scraper/recalculate", handleRecalculate(proc))
 			protected.POST("/scraper/refresh-profiles", handleRefreshProfiles(cm, proc))
-			protected.POST("/scraper/cron/start", handleCronStart(cm, proc))
-			protected.POST("/scraper/cron/stop", handleCronStop())
-			protected.POST("/scraper/run/matches", handleRunMatchScrape(cm, proc))
-			protected.POST("/scraper/run/profiles", handleRunProfileRefresh(cm, proc))
-			protected.GET("/scraper/status", handleScraperStatus(cm))
+			protected.POST("/scraper/cron/start", handleCronStart(db, cm, proc))
+			protected.POST("/scraper/cron/stop", handleCronStop(db))
+			protected.POST("/scraper/run/matches", handleRunMatchScrape(db, cm, proc))
+			protected.POST("/scraper/run/profiles", handleRunProfileRefresh(db, cm, proc))
+			protected.GET("/scraper/status", handleScraperStatus(db, cm))
 			// tasklog moved to public api group
 
 			// Test scrape endpoints
@@ -552,64 +605,116 @@ func handleTaskLog() gin.HandlerFunc {
 	}
 }
 
-// POST /api/scraper/cron/start
-// Starts the scheduler with two jobs:
-//   - Match scrape: runs once per day (24h)
-//   - Profile refresh: runs once per week (168h)
-func handleCronStart(cm *scraper.CagematchScraper, proc *scraper.Processor) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		cronMu.Lock()
-		defer cronMu.Unlock()
+// startCron brings up the scheduler. Safe to call when it is already running
+// (returns false). Callers hold no lock.
+//
+// The loop is a due-check heartbeat rather than a pair of tickers: tickers only
+// fire while the process lives, so with a 24h match interval a service that got
+// restarted daily would never scrape at all. Checking "is it overdue?" against
+// a timestamp persisted in the DB makes the schedule survive restarts — and
+// makes a restart after a long outage catch up immediately.
+func startCron(db *gorm.DB, cm *scraper.CagematchScraper, proc *scraper.Processor) bool {
+	cronMu.Lock()
+	if cronRunning {
+		cronMu.Unlock()
+		return false
+	}
+	cronStop = make(chan struct{})
+	cronRunning = true
+	stop := cronStop
+	// Publish the schedule up front so /admin shows a real next-run
+	// immediately rather than "—" until the first heartbeat.
+	nextMatchScrape = nextRun(lastMatchScrapeTime, matchScrapeInterval)
+	nextProfileRefresh = nextRun(lastProfileRefreshTime, profileRefreshInterval)
+	cronMu.Unlock()
 
-		if cronRunning {
-			c.JSON(http.StatusConflict, gin.H{"message": "Cron already running"})
+	go func() {
+		log.Printf("🕷️ Cron started — matches every %s, profiles every %s (checked every %s)",
+			matchScrapeInterval, profileRefreshInterval, cronHeartbeat)
+
+		// Let the process finish booting (and the caches warm) before the
+		// first catch-up scrape.
+		select {
+		case <-time.After(cronBootGrace):
+		case <-stop:
+			log.Println("🕷️ Cron stopped")
 			return
 		}
 
-		cronStop = make(chan struct{})
-		cronRunning = true
+		for {
+			cronMu.Lock()
+			lastMatch, lastMatchTry := lastMatchScrapeTime, lastMatchScrapeAttempt
+			lastProfile, lastProfileTry := lastProfileRefreshTime, lastProfileRefreshAttempt
+			cronMu.Unlock()
 
-		go func() {
-			matchInterval := 24 * time.Hour
-			profileInterval := 7 * 24 * time.Hour
-
-			matchTicker := time.NewTicker(matchInterval)
-			profileTicker := time.NewTicker(profileInterval)
-			defer matchTicker.Stop()
-			defer profileTicker.Stop()
-
-			nextMatchScrape = time.Now().Add(matchInterval)
-			nextProfileRefresh = time.Now().Add(profileInterval)
-
-			log.Printf("🕷️ Cron started — matches every %s, profiles every %s", matchInterval, profileInterval)
-
-			for {
-				select {
-				case <-matchTicker.C:
-					runMatchScrape(cm, proc)
-					nextMatchScrape = time.Now().Add(matchInterval)
-
-				case <-profileTicker.C:
-					runProfileRefresh(cm, proc)
-					nextProfileRefresh = time.Now().Add(profileInterval)
-
-				case <-cronStop:
-					log.Println("🕷️ Cron stopped")
-					return
-				}
+			// A failed run doesn't advance the success timestamp, so gate
+			// retries on the attempt time to avoid hammering cagematch.
+			if time.Since(lastMatch) >= matchScrapeInterval && time.Since(lastMatchTry) >= cronRetryInterval {
+				runMatchScrape(db, cm, proc)
 			}
-		}()
+			if time.Since(lastProfile) >= profileRefreshInterval && time.Since(lastProfileTry) >= cronRetryInterval {
+				runProfileRefresh(db, cm, proc)
+			}
+
+			cronMu.Lock()
+			nextMatchScrape = nextRun(lastMatchScrapeTime, matchScrapeInterval)
+			nextProfileRefresh = nextRun(lastProfileRefreshTime, profileRefreshInterval)
+			cronMu.Unlock()
+
+			select {
+			case <-time.After(cronHeartbeat):
+			case <-stop:
+				log.Println("🕷️ Cron stopped")
+				return
+			}
+		}
+	}()
+	return true
+}
+
+// nextRun returns when a job is next due. A job that is already overdue (or has
+// never run, leaving a zero timestamp) reports "now" rather than a date in the
+// past — or, for the zero time, in year 1.
+func nextRun(last time.Time, interval time.Duration) time.Time {
+	due := last.Add(interval)
+	if now := time.Now(); due.Before(now) {
+		return now
+	}
+	return due
+}
+
+// stopCron halts the scheduler. Returns false if it wasn't running.
+func stopCron() bool {
+	cronMu.Lock()
+	defer cronMu.Unlock()
+	if !cronRunning {
+		return false
+	}
+	close(cronStop)
+	cronRunning = false
+	return true
+}
+
+// POST /api/scraper/cron/start
+// Starts the scheduler and remembers that it should be on across restarts.
+func handleCronStart(db *gorm.DB, cm *scraper.CagematchScraper, proc *scraper.Processor) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !startCron(db, cm, proc) {
+			c.JSON(http.StatusConflict, gin.H{"message": "Cron already running"})
+			return
+		}
+		setSetting(db, settingCronEnabled, "true")
 
 		c.JSON(http.StatusOK, gin.H{
-			"message":          "Cron started — matches daily, profiles weekly",
-			"match_interval":   "24h",
-			"profile_interval": "168h",
+			"message":          "Cron started — matches daily, profiles weekly. Stays on across restarts.",
+			"match_interval":   matchScrapeInterval.String(),
+			"profile_interval": profileRefreshInterval.String(),
 		})
 	}
 }
 
 // runMatchScrape executes the incremental match scrape (used by cron and manual trigger)
-func runMatchScrape(cm *scraper.CagematchScraper, proc *scraper.Processor) {
+func runMatchScrape(db *gorm.DB, cm *scraper.CagematchScraper, proc *scraper.Processor) {
 	cronMu.Lock()
 	if matchScrapeRunning {
 		cronMu.Unlock()
@@ -617,6 +722,7 @@ func runMatchScrape(cm *scraper.CagematchScraper, proc *scraper.Processor) {
 		return
 	}
 	matchScrapeRunning = true
+	lastMatchScrapeAttempt = time.Now()
 	cronMu.Unlock()
 
 	defer func() {
@@ -635,18 +741,20 @@ func runMatchScrape(cm *scraper.CagematchScraper, proc *scraper.Processor) {
 	}
 
 	cronMu.Lock()
-	lastMatchScrapeTime = time.Now()
+	now := time.Now()
+	lastMatchScrapeTime = now
 	lastMatchScrapeMatches = newCount
-	lastScrapeTime = time.Now()
+	lastScrapeTime = now
 	lastScrapeMatches = newCount
 	cronMu.Unlock()
+	setSetting(db, settingLastMatchScrape, now.Format(time.RFC3339))
 
 	handlers.InvalidateRecordsCache()
 	log.Printf("🕷️ Match scrape complete — %d new matches in %s", newCount, time.Since(start))
 }
 
 // runProfileRefresh executes the profile refresh (used by cron and manual trigger)
-func runProfileRefresh(cm *scraper.CagematchScraper, proc *scraper.Processor) {
+func runProfileRefresh(db *gorm.DB, cm *scraper.CagematchScraper, proc *scraper.Processor) {
 	cronMu.Lock()
 	if profileRefreshRunning {
 		cronMu.Unlock()
@@ -654,6 +762,7 @@ func runProfileRefresh(cm *scraper.CagematchScraper, proc *scraper.Processor) {
 		return
 	}
 	profileRefreshRunning = true
+	lastProfileRefreshAttempt = time.Now()
 	cronMu.Unlock()
 
 	defer func() {
@@ -672,15 +781,17 @@ func runProfileRefresh(cm *scraper.CagematchScraper, proc *scraper.Processor) {
 	}
 
 	cronMu.Lock()
-	lastProfileRefreshTime = time.Now()
+	now := time.Now()
+	lastProfileRefreshTime = now
 	lastProfileRefreshCount = updated
 	cronMu.Unlock()
+	setSetting(db, settingLastProfileRun, now.Format(time.RFC3339))
 
 	log.Printf("👤 Profile refresh complete — %d wrestlers updated in %s", updated, time.Since(start))
 }
 
 // POST /api/scraper/run/matches — manual trigger for match scrape
-func handleRunMatchScrape(cm *scraper.CagematchScraper, proc *scraper.Processor) gin.HandlerFunc {
+func handleRunMatchScrape(db *gorm.DB, cm *scraper.CagematchScraper, proc *scraper.Processor) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cronMu.Lock()
 		if matchScrapeRunning {
@@ -690,7 +801,7 @@ func handleRunMatchScrape(cm *scraper.CagematchScraper, proc *scraper.Processor)
 		}
 		cronMu.Unlock()
 
-		go runMatchScrape(cm, proc)
+		go runMatchScrape(db, cm, proc)
 
 		c.JSON(http.StatusAccepted, gin.H{
 			"message": "Match scrape started — check /api/scraper/status to monitor",
@@ -699,7 +810,7 @@ func handleRunMatchScrape(cm *scraper.CagematchScraper, proc *scraper.Processor)
 }
 
 // POST /api/scraper/run/profiles — manual trigger for profile refresh
-func handleRunProfileRefresh(cm *scraper.CagematchScraper, proc *scraper.Processor) gin.HandlerFunc {
+func handleRunProfileRefresh(db *gorm.DB, cm *scraper.CagematchScraper, proc *scraper.Processor) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cronMu.Lock()
 		if profileRefreshRunning {
@@ -709,7 +820,7 @@ func handleRunProfileRefresh(cm *scraper.CagematchScraper, proc *scraper.Process
 		}
 		cronMu.Unlock()
 
-		go runProfileRefresh(cm, proc)
+		go runProfileRefresh(db, cm, proc)
 
 		c.JSON(http.StatusAccepted, gin.H{
 			"message": "Profile refresh started — check /api/scraper/status to monitor",
@@ -718,26 +829,22 @@ func handleRunProfileRefresh(cm *scraper.CagematchScraper, proc *scraper.Process
 }
 
 // POST /api/scraper/cron/stop
-func handleCronStop() gin.HandlerFunc {
+// Stops the scheduler and remembers it should stay off across restarts.
+func handleCronStop(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		cronMu.Lock()
-		defer cronMu.Unlock()
-
-		if !cronRunning {
+		if !stopCron() {
 			c.JSON(http.StatusConflict, gin.H{"message": "Cron not running"})
 			return
 		}
+		setSetting(db, settingCronEnabled, "false")
 
-		close(cronStop)
-		cronRunning = false
-
-		c.JSON(http.StatusOK, gin.H{"message": "Cron stopped"})
+		c.JSON(http.StatusOK, gin.H{"message": "Cron stopped — stays off until you start it again"})
 	}
 }
 
 // GET /api/scraper/status
 // Returns full status of both scrapers with live monitoring data.
-func handleScraperStatus(cm *scraper.CagematchScraper) gin.HandlerFunc {
+func handleScraperStatus(db *gorm.DB, cm *scraper.CagematchScraper) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cronMu.Lock()
 		cron := cronRunning
@@ -755,7 +862,10 @@ func handleScraperStatus(cm *scraper.CagematchScraper) gin.HandlerFunc {
 
 		// Build status response
 		status := gin.H{
-			"cron_running":     cron,
+			"cron_running": cron,
+			// The persisted preference — what the cron will do on next boot.
+			// Differs from cron_running only if someone hits the API mid-flight.
+			"cron_enabled":     getSetting(db, settingCronEnabled, "true") != "false",
 			"is_running":       isRunning,
 			"current_activity": currentWrestler,
 			"match_scraper": gin.H{
@@ -765,10 +875,10 @@ func handleScraperStatus(cm *scraper.CagematchScraper) gin.HandlerFunc {
 				"next_run":      nil,
 			},
 			"profile_refresher": gin.H{
-				"running":          profileRunning,
-				"last_run":         nil,
+				"running":           profileRunning,
+				"last_run":          nil,
 				"wrestlers_updated": lastProfileCount,
-				"next_run":         nil,
+				"next_run":          nil,
 			},
 		}
 

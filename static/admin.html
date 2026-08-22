@@ -196,8 +196,8 @@
                 <button class="btn btn-accent" id="pfpStartBtn" onclick="startPfpUpdate()"> PFP Update</button>
             </div>
             <div class="btn-group" style="margin-bottom: 15px;">
-                <button class="btn btn-green" id="cronStartBtn" onclick="cronStart()">Start Cron</button>
-                <button class="btn btn-red" id="cronStopBtn" onclick="cronStop()">Stop Cron</button>
+                <button class="btn btn-red" id="cronToggleBtn" onclick="cronToggle()">Turn Cron Off</button>
+                <span id="cronHint" style="font-size: 0.78rem; color: var(--text-muted); align-self: center;"></span>
             </div>
 
             <div class="status-row">
@@ -553,22 +553,23 @@
             } catch (e) {}
         }
 
-        async function cronStart() {
-            addLog('Starting cron (matches daily, profiles weekly)...', 'info');
-            try {
-                const data = await api('POST', '/api/scraper/cron/start', true);
-                addLog(data.message, 'success');
-                refreshStatus();
-            } catch (e) {}
-        }
+        // The cron runs by default and starts itself on boot; this toggle is
+        // the off switch, and the choice persists across restarts.
+        let cronOn = true;
 
-        async function cronStop() {
-            addLog('Stopping cron...', 'info');
+        async function cronToggle() {
+            const turningOff = cronOn;
+            const btn = document.getElementById('cronToggleBtn');
+            btn.disabled = true;
+            addLog(turningOff ? 'Turning cron off...' : 'Turning cron on (matches daily, profiles weekly)...', 'info');
             try {
-                const data = await api('POST', '/api/scraper/cron/stop', true);
+                const data = await api('POST', `/api/scraper/cron/${turningOff ? 'stop' : 'start'}`, true);
                 addLog(data.message, 'success');
+            } catch (e) {
+            } finally {
+                btn.disabled = false;
                 refreshStatus();
-            } catch (e) {}
+            }
         }
 
         // --- Status ---
@@ -601,13 +602,19 @@
                     currentEl.style.color = '#666';
                 }
 
-                // Cron status
-                const cronEl = document.getElementById('cronStatus');
-                if (data.cron_running) {
-                    cronEl.innerHTML = '<span class="badge badge-on">RUNNING</span>';
-                } else {
-                    cronEl.innerHTML = '<span class="badge badge-off">OFF</span>';
-                }
+                // Cron status — badge reflects what it's doing now, the toggle
+                // and hint reflect what it'll do after the next restart.
+                cronOn = !!data.cron_running;
+                document.getElementById('cronStatus').innerHTML = cronOn
+                    ? '<span class="badge badge-on">RUNNING</span>'
+                    : '<span class="badge badge-off">OFF</span>';
+
+                const btn = document.getElementById('cronToggleBtn');
+                btn.textContent = cronOn ? 'Turn Cron Off' : 'Turn Cron On';
+                btn.className = 'btn ' + (cronOn ? 'btn-red' : 'btn-green');
+                document.getElementById('cronHint').textContent = data.cron_enabled
+                    ? 'Starts automatically on restart'
+                    : 'Stays off after restart';
 
                 // Match scraper
                 const ms = data.match_scraper || {};
